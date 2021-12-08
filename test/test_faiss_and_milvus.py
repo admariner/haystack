@@ -130,7 +130,7 @@ def test_faiss_write_docs(document_store, index_buffer_size, batch_size):
     assert len(documents_indexed) == len(DOCUMENTS)
 
     # test if correct vectors are associated with docs
-    for i, doc in enumerate(documents_indexed):
+    for doc in documents_indexed:
         # we currently don't get the embeddings back when we call document_store.get_all_documents()
         original_doc = [d for d in DOCUMENTS if d["content"] == doc.content][0]
         stored_emb = document_store.faiss_indexes[document_store.index].reconstruct(int(doc.meta["vector_id"]))
@@ -265,7 +265,7 @@ def test_delete_docs_with_filters(document_store, retriever):
     documents = document_store.get_all_documents()
     assert len(documents) == 3
     assert document_store.get_embedding_count() == 3
-    assert all("2021" == doc.meta["year"] for doc in documents)
+    assert all(doc.meta["year"] == "2021" for doc in documents)
 
 
 @pytest.mark.slow
@@ -292,7 +292,7 @@ def test_delete_docs_by_id(document_store, retriever):
     document_store.update_embeddings(retriever=retriever, batch_size=4)
     assert document_store.get_embedding_count() == 6
     doc_ids = [doc.id for doc in document_store.get_all_documents()]
-    ids_to_delete = doc_ids[0:3]
+    ids_to_delete = doc_ids[:3]
 
     document_store.delete_documents(ids=ids_to_delete)
 
@@ -339,7 +339,7 @@ def test_get_docs_with_filters_one_value(document_store, retriever):
     documents =  document_store.get_all_documents(filters={"year": ["2020"]})
 
     assert len(documents) == 3
-    assert all("2020" == doc.meta["year"] for doc in documents)
+    assert all(doc.meta["year"] == "2020" for doc in documents)
 
 
 @pytest.mark.slow
@@ -470,7 +470,7 @@ def test_normalize_embeddings_diff_shapes(document_store_cosine_small):
 
     VEC_1 = np.array([.1, .2, .3], dtype="float32").reshape(1, -1)
     document_store_cosine_small.normalize_embedding(VEC_1)
-    assert np.linalg.norm(VEC_1) - 1 < 0.01
+    assert np.linalg.norm(VEC_1) < 1.01
 
 
 def test_cosine_sanity_check(document_store_cosine_small):

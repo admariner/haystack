@@ -71,7 +71,11 @@ def test_dpr_modules(caplog=None):
     assert type(passage_language_model) == DPRContextEncoder
 
     # check embedding layer weights
-    assert list(model.named_parameters())[0][1][0, 0].item() - -0.010200000368058681 < 0.0001
+    assert (
+        list(model.named_parameters())[0][1][0, 0].item()
+        > -0.010100000368058682
+    )
+
 
     d = {'query': 'big little lies season 2 how many episodes',
          'passages': [
@@ -123,7 +127,7 @@ def test_dpr_modules(caplog=None):
     loss = model.logits_to_loss_per_head(embeddings, **features)
     similarity_scores = model.prediction_heads[0]._embeddings_to_scores(query_emb, passage_emb).cpu()
     assert torch.all(torch.le(similarity_scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
-    assert (loss[0].item() - 0.0018) <= 0.0001
+    assert loss[0].item() <= 0.0019
 
 
 
@@ -655,8 +659,9 @@ def test_dpr_processor_save_load_non_bert_tokenizer(query_and_passage_model):
 
     # generate embeddings with model loaded from disk that originated from a FARM style model that was saved to disk earlier
     dataset3, tensor_names3, _, baskets3 = loaded_processor.dataset_from_dicts(
-        dicts=[d], indices=[i for i in range(len([d]))], return_baskets=True
+        dicts=[d], indices=list(range(len([d]))), return_baskets=True
     )
+
 
     data_loader = NamedDataLoader(
         dataset=dataset3, sampler=SequentialSampler(dataset3), batch_size=16, tensor_names=tensor_names3

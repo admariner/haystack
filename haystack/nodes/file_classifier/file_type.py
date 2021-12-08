@@ -20,7 +20,7 @@ class FileTypeClassifier(BaseComponent):
         """
         return {file_path.suffix.lstrip(".") for file_path in file_paths}
 
-    def run(self, file_paths: Union[Path, List[Path]]):  # type: ignore
+    def run(self, file_paths: Union[Path, List[Path]]):    # type: ignore
         """
         Return the output based on file extension
         """
@@ -29,7 +29,7 @@ class FileTypeClassifier(BaseComponent):
 
         extension: set = self._get_files_extension(file_paths)
         if len(extension) > 1:
-            raise ValueError(f"Multiple files types are not allowed at once.")
+            raise ValueError('Multiple files types are not allowed at once.')
 
         output = {"file_paths": file_paths}
         ext: str = extension.pop()

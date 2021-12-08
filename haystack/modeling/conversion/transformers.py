@@ -29,9 +29,9 @@ class Converter:
         for prediction_head in adaptive_model.prediction_heads:
             if len(prediction_head.layer_dims) != 2:
                 logger.error(
-                    f"Currently conversion only works for PredictionHeads that are a single layer Feed Forward NN with dimensions [LM_output_dim, number_classes].\n"
-                    f"            Your PredictionHead has {str(prediction_head.layer_dims)} dimensions."
+                    f'Currently conversion only works for PredictionHeads that are a single layer Feed Forward NN with dimensions [LM_output_dim, number_classes].\n            Your PredictionHead has {prediction_head.layer_dims} dimensions.'
                 )
+
                 continue
             if prediction_head.model_type == "span_classification":
                 transformers_model = Converter._convert_to_transformers_qa(adaptive_model, prediction_head)

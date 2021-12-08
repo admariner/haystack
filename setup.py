@@ -36,7 +36,7 @@ def get_dependency_links(filename):
     """
     with open(filename) as file:
         parsed_requirements = file.read().splitlines()
-    dependency_links = list()
+    dependency_links = []
     for line in parsed_requirements:
         line = line.strip()
         if line.startswith('--find-links'):

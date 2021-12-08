@@ -124,10 +124,12 @@ class DataSilo:
         if dicts is None:
             dicts = list(self.processor.file_to_dicts(filename))  # type: ignore
             # shuffle list of dicts here if we later want to have a random dev set splitted from train set
-            if str(self.processor.train_filename) in str(filename):
-                if not self.processor.dev_filename:
-                    if self.processor.dev_split > 0.0:
-                        random.shuffle(dicts)
+            if (
+                str(self.processor.train_filename) in str(filename)
+                and not self.processor.dev_filename
+                and self.processor.dev_split > 0.0
+            ):
+                random.shuffle(dicts)
 
         num_dicts = len(dicts)
         multiprocessing_chunk_size, num_cpus_used = calc_chunksize(
@@ -163,7 +165,7 @@ class DataSilo:
             datasets = []
             problematic_ids_all = set()
 
-            desc = f"Preprocessing Dataset"
+            desc = 'Preprocessing Dataset'
             if filename:
                 desc += f" {filename}"
             with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
@@ -299,8 +301,7 @@ class DataSilo:
             "dev_split": self.processor.dev_split,
             "tasks": self.processor.tasks
         }
-        checksum = get_dict_checksum(payload_dict)
-        return checksum
+        return get_dict_checksum(payload_dict)
 
     def _save_dataset_to_cache(self):
         """
@@ -430,29 +431,23 @@ class DataSilo:
                 clipped, ave_len, seq_lens, max_seq_len = self._calc_length_stats_biencoder()
             else:
                 logger.warning(
-                    f"Could not compute length statistics because 'input_ids' or 'query_input_ids' and 'passage_input_ids' are missing.")
+                    "Could not compute length statistics because 'input_ids' or 'query_input_ids' and 'passage_input_ids' are missing."
+                )
+
                 clipped = -1
                 ave_len = -1
         else:
             self.counts["train"] = 0
 
-        if self.data["dev"]:
-            self.counts["dev"] = len(self.data["dev"])
-        else:
-            self.counts["dev"] = 0
-
-        if self.data["test"]:
-            self.counts["test"] = len(self.data["test"])
-        else:
-            self.counts["test"] = 0
-
+        self.counts["dev"] = len(self.data["dev"]) if self.data["dev"] else 0
+        self.counts["test"] = len(self.data["test"]) if self.data["test"] else 0
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("Total examples   : {}".format(self.counts["train"] + self.counts["dev"] + self.counts["test"]))
         logger.info("")
-        if self.data["train"]:
-            if "input_ids" in self.tensor_names:
+        if "input_ids" in self.tensor_names:
+            if self.data["train"]:
                 logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
                 logger.info("Average sequence length after clipping: {}".format(ave_len))
                 logger.info("Proportion clipped:      {}".format(clipped))
@@ -461,7 +456,8 @@ class DataSilo:
                                 "Consider increasing max_seq_len. "
                                 "This will lead to higher memory consumption but is likely to "
                                 "improve your model performance".format(round(clipped * 100, 1), max_seq_len))
-            elif "query_input_ids" in self.tensor_names and "passage_input_ids" in self.tensor_names:
+        elif "query_input_ids" in self.tensor_names and "passage_input_ids" in self.tensor_names:
+            if self.data["train"]:
                 logger.info("Longest query length observed after clipping: {}   - for max_query_len: {}".format(
                     max(seq_lens[0]), max_seq_len[0]))
                 logger.info("Average query length after clipping:          {}".format(ave_len[0]))
@@ -633,11 +629,11 @@ class DataSiloForCrossVal:
                 sets_to_concat.extend(datasilo.data[setname])
         all_data = ConcatDataset(sets_to_concat)  # type: Dataset
 
-        documents = []
         keyfunc = lambda x: x[id_index][0]
         all_data = sorted(all_data.datasets, key=keyfunc)  # type: ignore
-        for key, document in groupby(all_data, key=keyfunc):  # type: ignore
-            documents.append(list(document))
+        documents = [
+            list(document) for key, document in groupby(all_data, key=keyfunc)
+        ]
 
         xval_split = cls._split_for_qa(documents=documents,
                                        id_index=id_index,
@@ -675,12 +671,9 @@ class DataSiloForCrossVal:
                         else:
                             neg_answer_idx.append(index)
                     # add random n_neg_answers_per_question samples to train set
-                    if len(neg_answer_idx) <= n_neg_answers_per_question:
-                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
-                    else:
+                    if len(neg_answer_idx) > n_neg_answers_per_question:
                         neg_answer_idx = random.sample(neg_answer_idx, n_neg_answers_per_question)
-                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
-
+                    train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
             ds_train = train_samples
             ds_test = [sample for document in test_set for sample in document]
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
@@ -725,8 +718,9 @@ def get_dict_checksum(payload_dict):
     """
     Get MD5 checksum for a dict.
     """
-    checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
-    return checksum
+    return hashlib.md5(
+        json.dumps(payload_dict, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 class DistillationDataSilo(DataSilo):
     """
@@ -798,5 +792,4 @@ class DistillationDataSilo(DataSilo):
             "tasks": self.processor.tasks,
             "teacher_name_or_path": self.teacher.pipeline_config["params"]["model_name_or_path"]
         }
-        checksum = get_dict_checksum(payload_dict)
-        return checksum
+        return get_dict_checksum(payload_dict)

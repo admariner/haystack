@@ -189,11 +189,7 @@ def tutorial14_query_classifier():
 
     for query in queries:
         result = keyword_classifier.run(query=query)
-        if result[1] == "output_1":
-            category = "question/statement"
-        else:
-            category = "keyword"
-
+        category = "question/statement" if result[1] == "output_1" else "keyword"
         print(f"Query: {query}, raw_output: {result}, class: {category}")
 
     # Here we create the question vs statement query classifier
@@ -205,11 +201,7 @@ def tutorial14_query_classifier():
 
     for query in queries:
         result = question_classifier.run(query=query)
-        if result[1] == "output_1":
-            category = "question"
-        else:
-            category = "statement"
-
+        category = "question" if result[1] == "output_1" else "statement"
         print(f"Query: {query}, raw_output: {result}, class: {category}")
 
 if __name__ == "__main__":

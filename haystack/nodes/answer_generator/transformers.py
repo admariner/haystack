@@ -126,12 +126,8 @@ class RAGenerator(BaseGenerator):
 
         if self.generator_type == RAGeneratorType.SEQUENCE:
             raise NotImplementedError("RagSequenceForGeneration is not implemented yet")
-            # TODO: Enable when transformers have it. Refer https://github.com/huggingface/transformers/issues/7905
-            # Also refer refer https://github.com/huggingface/transformers/issues/7829
-            # self.model = RagSequenceForGeneration.from_pretrained(model_name_or_path)
-        else:
-            self.model = RagTokenForGeneration.from_pretrained(model_name_or_path, revision=model_version)
-            self.model.to(str(self.devices[0]))
+        self.model = RagTokenForGeneration.from_pretrained(model_name_or_path, revision=model_version)
+        self.model.to(str(self.devices[0]))
 
     # Copied cat_input_and_doc method from transformers.RagRetriever
     # Refer section 2.3 of https://arxiv.org/abs/2005.11401
@@ -142,10 +138,14 @@ class RAGenerator(BaseGenerator):
             doc_title = doc_title[:-1]
         if prefix is None:
             prefix = ""
-        out = (prefix + doc_title + self.model.config.title_sep + doc_text + self.model.config.doc_sep +
-               input_string).replace("  ", " ")
-
-        return out
+        return (
+            prefix
+            + doc_title
+            + self.model.config.title_sep
+            + doc_text
+            + self.model.config.doc_sep
+            + input_string
+        ).replace("  ", " ")
 
     # Copied postprocess_docs method from transformers.RagRetriever and modified
     def _get_contextualized_inputs(self, texts: List[str], query: str, titles: Optional[List[str]] = None,
@@ -217,7 +217,7 @@ class RAGenerator(BaseGenerator):
         ```
         """
         torch.set_grad_enabled(False)
-        if len(documents) == 0:
+        if not documents:
             raise AttributeError("generator need documents to predict the answer")
 
         top_k = top_k if top_k is not None else self.top_k
@@ -286,9 +286,7 @@ class RAGenerator(BaseGenerator):
                     "content": flat_docs_dict["content"],
                     "titles": titles,
                 }))
-        result = {"query": query, "answers": answers}
-
-        return result
+        return {"query": query, "answers": answers}
 
 
 class Seq2SeqGenerator(BaseGenerator):
@@ -410,7 +408,7 @@ class Seq2SeqGenerator(BaseGenerator):
 
         """
         torch.set_grad_enabled(False)
-        if len(documents) == 0:
+        if not documents:
             raise AttributeError("generator needs documents to predict the answer")
 
         top_k = top_k if top_k is not None else self.top_k
@@ -438,7 +436,7 @@ class Seq2SeqGenerator(BaseGenerator):
             attention_mask=query_and_docs_encoded["attention_mask"],
             min_length=self.min_length,
             max_length=self.max_length,
-            do_sample=True if self.num_beams == 1 else False,
+            do_sample=self.num_beams == 1,
             early_stopping=True,
             num_beams=self.num_beams,
             temperature=1.0,
@@ -447,8 +445,9 @@ class Seq2SeqGenerator(BaseGenerator):
             eos_token_id=self.tokenizer.eos_token_id,
             no_repeat_ngram_size=3,
             num_return_sequences=top_k,
-            decoder_start_token_id=self.tokenizer.bos_token_id
+            decoder_start_token_id=self.tokenizer.bos_token_id,
         )
+
         generated_answers = self.tokenizer.batch_decode(generated_answers_encoded, skip_special_tokens=True)
         return {"query": query, "answers": generated_answers}
 

@@ -135,16 +135,16 @@ class TableReader(BaseReader):
 
             # Get cell values
             current_answer_coordinates = predicted_answer_coordinates[0]
-            current_answer_cells = []
-            for coordinate in current_answer_coordinates:
-                current_answer_cells.append(table.iat[coordinate])
+            current_answer_cells = [
+                table.iat[coordinate] for coordinate in current_answer_coordinates
+            ]
 
             # Get aggregation operator
             if self.model.config.aggregation_labels is not None:
                 current_aggregation_operator = self.model.config.aggregation_labels[predicted_aggregation_indices[0]]
             else:
                 current_aggregation_operator = "NONE"
-            
+
             # Calculate answer score
             current_score = self._calculate_answer_score(outputs.logits.cpu().detach(), inputs, current_answer_coordinates)
 
@@ -173,10 +173,8 @@ class TableReader(BaseReader):
         answers = sorted(answers, reverse=True)
         answers = answers[:top_k]
 
-        results = {"query": query,
+        return {"query": query,
                    "answers": answers}
-
-        return results
     
     def _calculate_answer_score(self, logits: torch.Tensor, inputs: BatchEncoding,
                                 answer_coordinates: List[Tuple[int, int]]) -> float:
@@ -209,32 +207,30 @@ class TableReader(BaseReader):
         if len(answer_cells) == 1:
             return answer_cells[0]
         # Return empty string if model did not select any cell as answer
-        if len(answer_cells) == 0:
+        if not answer_cells:
             return ""
 
         # Parse answer cells in order to aggregate numerical values
         parsed_answer_cells = [parser.parse(cell) for cell in answer_cells]
-        # Check if all cells contain at least one numerical value and that all values share the same unit
-        if all(parsed_answer_cells) and all(cell[0].unit.name == parsed_answer_cells[0][0].unit.name
-                                            for cell in parsed_answer_cells):
-            numerical_values = [cell[0].value for cell in parsed_answer_cells]
-            unit = parsed_answer_cells[0][0].unit.symbols[0] if parsed_answer_cells[0][0].unit.symbols else ""
+        if not all(parsed_answer_cells) or any(
+            cell[0].unit.name != parsed_answer_cells[0][0].unit.name
+            for cell in parsed_answer_cells
+        ):
+            return f"{agg_operator} > {', '.join(answer_cells)}"
+        numerical_values = [cell[0].value for cell in parsed_answer_cells]
+        unit = parsed_answer_cells[0][0].unit.symbols[0] if parsed_answer_cells[0][0].unit.symbols else ""
 
-            if agg_operator == "SUM":
-                answer_value = sum(numerical_values)
-            elif agg_operator == "AVERAGE":
-                answer_value = mean(numerical_values)
-            else:
-                return f"{agg_operator} > {', '.join(answer_cells)}"
-
-            if unit:
-                return f"{str(answer_value)} {unit}"
-            else:
-                return str(answer_value)
-
-        # Not all selected answer cells contain a numerical value or answer cells don't share the same unit
+        if agg_operator == "AVERAGE":
+            answer_value = mean(numerical_values)
+        elif agg_operator == "SUM":
+            answer_value = sum(numerical_values)
         else:
             return f"{agg_operator} > {', '.join(answer_cells)}"
+
+        if unit:
+            return f'{answer_value} {unit}'
+        else:
+            return str(answer_value)
 
     @staticmethod
     def _calculate_answer_offsets(answer_coordinates: List[Tuple[int, int]], table: pd.DataFrame) -> List[Span]:

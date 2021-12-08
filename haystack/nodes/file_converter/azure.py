@@ -181,12 +181,13 @@ class AzureConverter(BaseConverter):
         for page in result.pages:
             tables_on_page = table_spans_by_page[page.page_number]
             for line in page.lines:
-                in_table = False
-                # Check if line is part of a table
-                for table in tables_on_page:
-                    if table.offset <= line.spans[0].offset <= table.offset + table.length:
-                        in_table = True
-                        break
+                in_table = any(
+                    table.offset
+                    <= line.spans[0].offset
+                    <= table.offset + table.length
+                    for table in tables_on_page
+                )
+
                 if in_table:
                     continue
                 text += f"{line.content}\n"

@@ -135,25 +135,23 @@ def compute_report_metrics(head: PredictionHead, preds, labels):
         raise AttributeError(f"No report function for head.ph_output_type '{head.ph_output_type}'. "
                              f"You can register a custom one via register_report(name='{head.ph_output_type}', implementation=<your_report_function>")
 
-    # CHANGE PARAMETERS, not all report_fn accept digits
-    if head.ph_output_type in ["per_sequence"]:
-        # supply labels as all possible combination because if ground truth labels do not cover
-        # all values in label_list (maybe dev set is small), the report will break
-        if head.model_type == "text_similarity":
-            labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
-            preds = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])  # type: ignore
-            all_possible_labels = list(range(len(head.label_list)))
-        else:
-            all_possible_labels = head.label_list
-        return report_fn(
-            labels,
-            preds,
-            digits=4,
-            labels=all_possible_labels,
-            target_names=head.label_list
-        )
-    else:
+    if head.ph_output_type not in ["per_sequence"]:
         return report_fn(labels, preds)
+    # supply labels as all possible combination because if ground truth labels do not cover
+    # all values in label_list (maybe dev set is small), the report will break
+    if head.model_type == "text_similarity":
+        labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
+        preds = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])  # type: ignore
+        all_possible_labels = list(range(len(head.label_list)))
+    else:
+        all_possible_labels = head.label_list
+    return report_fn(
+        labels,
+        preds,
+        digits=4,
+        labels=all_possible_labels,
+        target_names=head.label_list
+    )
 
 
 def squad_EM(preds, labels):
@@ -193,7 +191,7 @@ def squad_f1(preds, labels):
     n_docs = len(preds)
     for i in range(n_docs):
         best_pred = preds[i][0]
-        best_f1 = max([squad_f1_single(best_pred, label) for label in labels[i]])
+        best_f1 = max(squad_f1_single(best_pred, label) for label in labels[i])
         f1_scores.append(best_f1)
     return np.mean(f1_scores)
 
@@ -216,14 +214,11 @@ def squad_f1_single(pred, label, pred_idx: int = 0):
         return 0.0
     precision = n_overlap / len(pred_span)
     recall = n_overlap / len(label_span)
-    f1 = (2 * precision * recall) / (precision + recall)
-    return f1
+    return (2 * precision * recall) / (precision + recall)
 
 
 def confidence(preds):
-    conf = 0
-    for pred in preds:
-        conf += pred[0][0].confidence
+    conf = sum(pred[0][0].confidence for pred in preds)
     return conf/len(preds) if len(preds) else 0
 
 
@@ -290,7 +285,11 @@ def top_n_accuracy(preds, labels):
         f1_score = 0
         current_preds = preds[i][0]
         for idx, pred in enumerate(current_preds):
-            f1_score = max([squad_f1_single(current_preds, label, pred_idx=idx) for label in labels[i]])
+            f1_score = max(
+                squad_f1_single(current_preds, label, pred_idx=idx)
+                for label in labels[i]
+            )
+
             if f1_score:
                 break
         if f1_score:
@@ -313,8 +312,7 @@ def text_similarity_acc_and_f1(preds, labels):
     """
     top_1_pred = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
     labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
-    res = acc_and_f1(top_1_pred, labels)
-    return res
+    return acc_and_f1(top_1_pred, labels)
 
 
 def text_similarity_avg_ranks(preds, labels) -> float:

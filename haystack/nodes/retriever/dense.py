@@ -212,8 +212,9 @@ class DensePassageRetriever(BaseRetriever):
         if index is None:
             index = self.document_store.index
         query_emb = self.embed_queries(texts=[query])
-        documents = self.document_store.query_by_embedding(query_emb=query_emb[0], top_k=top_k, filters=filters, index=index)
-        return documents
+        return self.document_store.query_by_embedding(
+            query_emb=query_emb[0], top_k=top_k, filters=filters, index=index
+        )
 
     def _get_predictions(self, dicts):
         """
@@ -233,8 +234,9 @@ class DensePassageRetriever(BaseRetriever):
         :return: dictionary of embeddings for "passages" and "query"
         """
         dataset, tensor_names, _, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=[i for i in range(len(dicts))], return_baskets=True
+            dicts, indices=list(range(len(dicts))), return_baskets=True
         )
+
 
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
@@ -243,13 +245,8 @@ class DensePassageRetriever(BaseRetriever):
         self.model.eval()
 
         # When running evaluations etc., we don't want a progress bar for every single query
-        if len(dataset) == 1:
-            disable_tqdm=True
-        else:
-            disable_tqdm = not self.progress_bar
-
-        with tqdm(total=len(data_loader)*self.batch_size, unit=" Docs", desc=f"Create embeddings", position=1,
-                  leave=False, disable=disable_tqdm) as progress_bar:
+        disable_tqdm = True if len(dataset) == 1 else not self.progress_bar
+        with tqdm(total=len(data_loader)*self.batch_size, unit=" Docs", desc='Create embeddings', position=1, leave=False, disable=disable_tqdm) as progress_bar:
             for batch in data_loader:
                 batch = {key: batch[key].to(self.devices[0]) for key in batch}
 
@@ -276,8 +273,7 @@ class DensePassageRetriever(BaseRetriever):
         :return: Embeddings, one per input queries
         """
         queries = [{'query': q} for q in texts]
-        result = self._get_predictions(queries)["query"]
-        return result
+        return self._get_predictions(queries)["query"]
 
     def embed_documents(self, docs: List[Document]) -> List[np.ndarray]:
         """
@@ -297,9 +293,7 @@ class DensePassageRetriever(BaseRetriever):
             "label": d.meta["label"] if d.meta and "label" in d.meta else "positive",
             "external_id": d.id}]
         } for d in docs]
-        embeddings = self._get_predictions(passages)["passages"]
-
-        return embeddings
+        return self._get_predictions(passages)["passages"]
 
     def train(self,
               data_dir: str,
@@ -652,9 +646,9 @@ class TableTextRetriever(BaseRetriever):
         if index is None:
             index = self.document_store.index
         query_emb = self.embed_queries(texts=[query])
-        documents = self.document_store.query_by_embedding(query_emb=query_emb[0], top_k=top_k, filters=filters,
-                                                           index=index)
-        return documents
+        return self.document_store.query_by_embedding(
+            query_emb=query_emb[0], top_k=top_k, filters=filters, index=index
+        )
 
     def _get_predictions(self, dicts: List[Dict]) -> Dict[str, List[np.ndarray]]:
         """
@@ -675,8 +669,9 @@ class TableTextRetriever(BaseRetriever):
         """
 
         dataset, tensor_names, _, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=[i for i in range(len(dicts))], return_baskets=True
+            dicts, indices=list(range(len(dicts))), return_baskets=True
         )
+
 
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
@@ -690,8 +685,7 @@ class TableTextRetriever(BaseRetriever):
         else:
             disable_tqdm = not self.progress_bar
 
-        with tqdm(total=len(data_loader) * self.batch_size, unit=" Docs", desc=f"Create embeddings", position=1,
-                  leave=False, disable=disable_tqdm) as progress_bar:
+        with tqdm(total=len(data_loader) * self.batch_size, unit=" Docs", desc='Create embeddings', position=1, leave=False, disable=disable_tqdm) as progress_bar:
             for batch in data_loader:
                 batch = {key: batch[key].to(self.devices[0]) for key in batch}
 
@@ -711,15 +705,14 @@ class TableTextRetriever(BaseRetriever):
         return all_embeddings
 
     def embed_queries(self, texts: List[str]) -> List[np.ndarray]:
-            """
+        """
             Create embeddings for a list of queries using the query encoder
 
             :param texts: Queries to embed
             :return: Embeddings, one per input queries
             """
-            queries = [{'query': q} for q in texts]
-            result = self._get_predictions(queries)["query"]
-            return result
+        queries = [{'query': q} for q in texts]
+        return self._get_predictions(queries)["query"]
 
     def embed_documents(self, docs: List[Document]) -> List[np.ndarray]:
         """
@@ -760,9 +753,7 @@ class TableTextRetriever(BaseRetriever):
                     "external_id": doc.id
                 }]})
 
-        embeddings = self._get_predictions(model_input)["passages"]
-
-        return embeddings
+        return self._get_predictions(model_input)["passages"]
 
     def train(self,
               data_dir: str,
@@ -1006,7 +997,7 @@ class EmbeddingRetriever(BaseRetriever):
             self.devices = devices
         else:
             self.devices, _ = initialize_device_settings(use_cuda=use_gpu, multi_gpu=True)
-        
+
         if batch_size < len(self.devices):
             logger.warning("Batch size is less than the number of devices. All gpus will not be utilized.")
 
@@ -1025,7 +1016,7 @@ class EmbeddingRetriever(BaseRetriever):
 
         logger.info(f"Init retriever using embeddings of model {embedding_model}")
 
-        if not model_format in _EMBEDDING_ENCODERS.keys():
+        if model_format not in _EMBEDDING_ENCODERS.keys():
             raise ValueError(f"Unknown retriever embedding model format {model_format}")
         self.embedding_encoder = _EMBEDDING_ENCODERS[model_format](self)
 
@@ -1044,9 +1035,9 @@ class EmbeddingRetriever(BaseRetriever):
         if index is None:
             index = self.document_store.index
         query_emb = self.embed_queries(texts=[query])
-        documents = self.document_store.query_by_embedding(query_emb=query_emb[0], filters=filters,
-                                                           top_k=top_k, index=index)
-        return documents
+        return self.document_store.query_by_embedding(
+            query_emb=query_emb[0], filters=filters, top_k=top_k, index=index
+        )
 
     def embed_queries(self, texts: List[str]) -> List[np.ndarray]:
         """

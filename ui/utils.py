@@ -108,16 +108,18 @@ def send_feedback(query, answer_obj, is_correct_answer, is_correct_document, doc
 def upload_doc(file):
     url = f"{API_ENDPOINT}/{DOC_UPLOAD}"
     files = [("files", file)]
-    response = requests.post(url, files=files).json()
-    return response
+    return requests.post(url, files=files).json()
 
 
 def get_backlink(result) -> Tuple[str, str]:
     if result.get("document", None):
         doc = result["document"]
-        if isinstance(doc, dict):
-            if doc.get("meta", None):
-                if isinstance(doc["meta"], dict):
-                    if doc["meta"].get("url", None) and doc["meta"].get("title", None):
-                        return doc["meta"]["url"], doc["meta"]["title"]
+        if (
+            isinstance(doc, dict)
+            and doc.get("meta", None)
+            and isinstance(doc["meta"], dict)
+            and doc["meta"].get("url", None)
+            and doc["meta"].get("title", None)
+        ):
+            return doc["meta"]["url"], doc["meta"]["title"]
     return None, None

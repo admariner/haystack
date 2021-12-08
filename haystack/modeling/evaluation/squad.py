@@ -52,5 +52,4 @@ def compute_f1(a_gold: str, a_pred: str):
         return 0
     precision = 1.0 * num_same / len(pred_toks)
     recall = 1.0 * num_same / len(gold_toks)
-    f1 = (2 * precision * recall) / (precision + recall)
-    return f1
+    return (2 * precision * recall) / (precision + recall)

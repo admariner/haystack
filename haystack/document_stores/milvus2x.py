@@ -191,7 +191,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
             ]
 
             for field in custom_fields:
-                if field.name == self.id_field or field.name == self.embedding_field:
+                if field.name in [self.id_field, self.embedding_field]:
                     logger.warning(f'Skipping `{field.name}` as it is similar to `id_field` or `embedding_field`')
                 else:
                     fields.append(field)
@@ -253,7 +253,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
 
         document_objects = [Document.from_dict(d, field_map=field_map) if isinstance(d, dict) else d for d in documents]
         document_objects = self._handle_duplicate_documents(document_objects, duplicate_documents)
-        add_vectors = False if document_objects[0].embedding is None else True
+        add_vectors = document_objects[0].embedding is not None
 
         batched_documents = get_batches_from_generator(document_objects, batch_size)
         with tqdm(total=len(document_objects), disable=not self.progress_bar) as progress_bar:
@@ -295,10 +295,6 @@ class Milvus2DocumentStore(SQLDocumentStore):
                                 continue
                             if k in doc.meta:
                                 records[v]["values"].append(doc.meta[k])
-                            else:
-                                # TODO: check whether to throw error or not?
-                                pass
-
                     if duplicate_documents == 'overwrite':
                         existing_docs = super().get_documents_by_id(ids=doc_ids, index=index)
                         self._delete_vector_ids_from_milvus(documents=existing_docs, index=index)
@@ -334,11 +330,11 @@ class Milvus2DocumentStore(SQLDocumentStore):
         field_to_idx: Dict[str, int] = {}
         field_to_type: Dict[str, DataType] = {}
         count = 0
-        for idx, field in enumerate(collection_schema.fields):
+        for field in collection_schema.fields:
             if not field.is_primary:
                 field_to_idx[field.name] = count
                 field_to_type[field.name] = field.dtype
-                count = count + 1
+                count += 1
         return field_to_idx, field_to_type
 
     def update_embeddings(
@@ -391,7 +387,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
         )
         batched_documents = get_batches_from_generator(result, batch_size)
         with tqdm(total=document_count, disable=not self.progress_bar, position=0, unit=" docs",
-                  desc="Updating Embedding") as progress_bar:
+                      desc="Updating Embedding") as progress_bar:
             for document_batch in batched_documents:
                 records: List[Dict[str, Any]] = [
                     {
@@ -414,15 +410,14 @@ class Milvus2DocumentStore(SQLDocumentStore):
                             continue
                         if k in doc.meta:
                             records[v]["values"].append(doc.meta[k])
-                        else:
-                            # TODO: check whether to throw error or not?
-                            pass
-
                 mutation_result = connection.insert(index, records)
 
-                vector_id_map = {}
-                for vector_id, doc in zip(mutation_result.primary_keys, document_batch):
-                    vector_id_map[doc.id] = str(vector_id)
+                vector_id_map = {
+                    doc.id: str(vector_id)
+                    for vector_id, doc in zip(
+                        mutation_result.primary_keys, document_batch
+                    )
+                }
 
                 self.update_vector_ids(vector_id_map, index=index)
                 progress_bar.set_description_str("Documents Processed")
@@ -537,12 +532,11 @@ class Milvus2DocumentStore(SQLDocumentStore):
         has_collection = connection.has_collection(collection_name=index)
         if not has_collection:
             logger.warning("No index exists. Use 'update_embeddings()` to create an index.")
+        elif filters:
+            existing_docs = super().get_all_documents(filters=filters, index=index)
+            self._delete_vector_ids_from_milvus(documents=existing_docs, index=index)
         else:
-            if filters:
-                existing_docs = super().get_all_documents(filters=filters, index=index)
-                self._delete_vector_ids_from_milvus(documents=existing_docs, index=index)
-            else:
-                connection.drop_collection(collection_name=index)
+            connection.drop_collection(collection_name=index)
 
             # TODO: Equivalent in 2.0?
             # self.milvus_server.compact(collection_name=index)
@@ -600,8 +594,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_document_by_id(self, id: str, index: Optional[str] = None) -> Optional[Document]:
         """
@@ -612,8 +605,7 @@ class Milvus2DocumentStore(SQLDocumentStore):
                       DocumentStore's default index (self.index) will be used.
         """
         documents = self.get_documents_by_id([id], index)
-        document = documents[0] if documents else None
-        return document
+        return documents[0] if documents else None
 
     def get_documents_by_id(
             self, ids: List[str], index: Optional[str] = None, batch_size: int = 10_000
@@ -635,12 +627,13 @@ class Milvus2DocumentStore(SQLDocumentStore):
 
     def _populate_embeddings_to_docs(self, docs: List[Document], index: Optional[str] = None):
         index = index or self.index
-        docs_with_vector_ids = []
-        for doc in docs:
-            if doc.meta and doc.meta.get("vector_id") is not None:
-                docs_with_vector_ids.append(doc)
+        docs_with_vector_ids = [
+            doc
+            for doc in docs
+            if doc.meta and doc.meta.get("vector_id") is not None
+        ]
 
-        if len(docs_with_vector_ids) == 0:
+        if not docs_with_vector_ids:
             return
 
         try:
@@ -666,12 +659,13 @@ class Milvus2DocumentStore(SQLDocumentStore):
     def _delete_vector_ids_from_milvus(self, documents: List[Document], index: Optional[str] = None):
 
         index = index or self.index
-        existing_vector_ids = []
-        for doc in documents:
-            if "vector_id" in doc.meta:
-                existing_vector_ids.append(str(doc.meta["vector_id"]))
+        existing_vector_ids = [
+            str(doc.meta["vector_id"])
+            for doc in documents
+            if "vector_id" in doc.meta
+        ]
 
-        if len(existing_vector_ids) > 0:
+        if existing_vector_ids:
             # TODO: adjust when Milvus 2.0 is released and supports deletion of vectors again
             #  (https://github.com/milvus-io/milvus/issues/7130)
             raise NotImplementedError("Milvus 2.0rc is not yet supporting the deletion of vectors.")

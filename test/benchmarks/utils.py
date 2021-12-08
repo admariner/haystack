@@ -131,10 +131,7 @@ def index_to_doc_store(doc_store, docs, retriever, labels=None):
 
 def load_config(config_filename, ci):
     conf = json.load(open(config_filename))
-    if ci:
-        params = conf["params"]["ci"]
-    else:
-        params = conf["params"]["full"]
+    params = conf["params"]["ci"] if ci else conf["params"]["full"]
     filenames = conf["filenames"]
     max_docs = max(params["n_docs_options"])
     n_docs_keys = sorted([int(x) for x in list(filenames["embeddings_filenames"])])

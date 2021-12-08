@@ -73,8 +73,9 @@ class ElasticsearchRetriever(BaseRetriever):
         if index is None:
             index = self.document_store.index
 
-        documents = self.document_store.query(query, filters, top_k, self.custom_query, index)
-        return documents
+        return self.document_store.query(
+            query, filters, top_k, self.custom_query, index
+        )
 
 
 class ElasticsearchFilterOnlyRetriever(ElasticsearchRetriever):
@@ -96,9 +97,13 @@ class ElasticsearchFilterOnlyRetriever(ElasticsearchRetriever):
             top_k = self.top_k
         if index is None:
             index = self.document_store.index
-        documents = self.document_store.query(query=None, filters=filters, top_k=top_k,
-                                              custom_query=self.custom_query, index=index)
-        return documents
+        return self.document_store.query(
+            query=None,
+            filters=filters,
+            top_k=top_k,
+            custom_query=self.custom_query,
+            index=index,
+        )
 
 # TODO make Paragraph generic for configurable units of text eg, pages, paragraphs, or split by a char_limit
 Paragraph = namedtuple("Paragraph", ["paragraph_id", "document_id", "content", "meta"])
@@ -160,11 +165,10 @@ class TfidfRetriever(BaseRetriever):
         question_vector = self.vectorizer.transform([query])
 
         scores = self.tfidf_matrix.dot(question_vector.T).toarray()
-        idx_scores = [(idx, score) for idx, score in enumerate(scores)]
-        indices_and_scores = OrderedDict(
+        idx_scores = list(enumerate(scores))
+        return OrderedDict(
             sorted(idx_scores, key=(lambda tup: tup[1]), reverse=True)
         )
-        return indices_and_scores
 
     def retrieve(self, query: str, filters: dict = None, top_k: Optional[int] = None, index: str = None) -> List[Document]:
         """
@@ -176,11 +180,13 @@ class TfidfRetriever(BaseRetriever):
         :param top_k: How many documents to return per query.
         :param index: The name of the index in the DocumentStore from which to retrieve documents
         """
-        if self.auto_fit:
-            if self.document_store.get_document_count() != self.document_count:
-                # run fit() to update self.df, self.tfidf_matrix and self.document_count
-                logger.warning("Indexed documents have been updated and fit() method needs to be run before retrieval. Running it now.")
-                self.fit()
+        if (
+            self.auto_fit
+            and self.document_store.get_document_count() != self.document_count
+        ):
+            # run fit() to update self.df, self.tfidf_matrix and self.document_count
+            logger.warning("Indexed documents have been updated and fit() method needs to be run before retrieval. Running it now.")
+            self.fit()
         if self.df is None:
             raise Exception("Retrieval requires dataframe df and tf-idf matrix but fit() did not calculate them probably due to an empty document store.")
 
@@ -207,16 +213,11 @@ class TfidfRetriever(BaseRetriever):
         meta_data = [{"document_id": row["document_id"], "paragraph_id": row["paragraph_id"],  "meta": row.get("meta", {})}
                      for idx, row in df_sliced.iterrows()]
 
-        documents = []
-        for para, meta in zip(paragraphs, meta_data):
-            documents.append(
-                Document(
+        return [Document(
                     id=meta["document_id"],
                     content=para,
                     meta=meta.get("meta", {})
-                ))
-
-        return documents
+                ) for para, meta in zip(paragraphs, meta_data)]
 
     def fit(self):
         """
@@ -224,9 +225,9 @@ class TfidfRetriever(BaseRetriever):
         """
         if not self.paragraphs or len(self.paragraphs) == 0:
             self.paragraphs = self._get_all_paragraphs()
-            if not self.paragraphs or len(self.paragraphs) == 0:
-                logger.warning("Fit method called with empty document store")
-                return
+        if not self.paragraphs or len(self.paragraphs) == 0:
+            logger.warning("Fit method called with empty document store")
+            return
 
         self.df = pd.DataFrame.from_dict(self.paragraphs)
         self.df["content"] = self.df["content"].apply(lambda x: " ".join(x))

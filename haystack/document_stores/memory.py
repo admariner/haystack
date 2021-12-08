@@ -126,7 +126,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
         label_objects = [Label.from_dict(l) if isinstance(l, dict) else l for l in labels]
 
         duplicate_ids: list = [label.id for label in self._get_duplicate_labels(label_objects, index=index)]
-        if len(duplicate_ids) > 0:
+        if duplicate_ids:
             logger.warning(f"Duplicate Label IDs: Inserting a Label whose id already exists in this document store."
                            f" This will overwrite the old Label. Please make sure Label.id is a unique identifier of"
                            f" the answer annotation and not the question."
@@ -151,13 +151,12 @@ class InMemoryDocumentStore(BaseDocumentStore):
         else:
             return None
 
-    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:  # type: ignore
+    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:    # type: ignore
         """
         Fetch documents by specifying a list of text id strings.
         """
         index = index or self.index
-        documents = [self.indexes[index][id] for id in ids]
-        return documents
+        return [self.indexes[index][id] for id in ids]
         
     def query_by_embedding(self,
                            query_emb: np.ndarray,
@@ -205,7 +204,11 @@ class InMemoryDocumentStore(BaseDocumentStore):
             new_document.score = (score + 1) / 2
             candidate_docs.append(new_document)
 
-        return sorted(candidate_docs, key=lambda x: x.score if x.score is not None else 0.0, reverse=True)[0:top_k]
+        return sorted(
+            candidate_docs,
+            key=lambda x: x.score if x.score is not None else 0.0,
+            reverse=True,
+        )[:top_k]
 
     def update_embeddings(
         self,
@@ -271,8 +274,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
         Return the count of embeddings in the document store.
         """
         documents = self.get_all_documents(filters=filters, index=index)
-        embedding_count = sum(doc.embedding is not None for doc in documents)
-        return embedding_count
+        return sum(doc.embedding is not None for doc in documents)
 
     def get_label_count(self, index: Optional[str] = None) -> int:
         """
@@ -307,10 +309,11 @@ class InMemoryDocumentStore(BaseDocumentStore):
             for doc in documents:
                 is_hit = True
                 for key, values in filters.items():
-                    if doc.meta.get(key):
-                        if doc.meta[key] not in values:
-                            is_hit = False
-                    else:
+                    if (
+                        doc.meta.get(key)
+                        and doc.meta[key] not in values
+                        or not doc.meta.get(key)
+                    ):
                         is_hit = False
                 if is_hit:
                     filtered_documents.append(doc)
@@ -336,8 +339,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
         :param return_embedding: Whether to return the document embeddings.
         """
         result = self.get_all_documents_generator(index=index, filters=filters, return_embedding=return_embedding)
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_all_documents_generator(
         self,
@@ -374,11 +376,7 @@ class InMemoryDocumentStore(BaseDocumentStore):
             result = []
             for label in self.indexes[index].values():
                 label_dict = label.to_dict()
-                is_hit = True
-                for key, values in filters.items():
-                    if label_dict[key] not in values:
-                        is_hit = False
-                        break
+                is_hit = all(label_dict[key] in values for key, values in filters.items())
                 if is_hit:
                     result.append(label)
         else:

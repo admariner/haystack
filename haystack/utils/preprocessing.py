@@ -30,7 +30,7 @@ def convert_files_to_dicts(
     :param split_paragraphs: split text in paragraphs.
     :param encoding: character encoding to use when converting pdf documents.
     """
-    file_paths = [p for p in Path(dir_path).glob("**/*")]
+    file_paths = list(Path(dir_path).glob("**/*"))
     allowed_suffixes = [".pdf", ".txt", ".docx"]
     suffix2converter: Dict[str, BaseConverter] = {}
 
@@ -46,7 +46,7 @@ def convert_files_to_dicts(
                            'See haystack.file_converter for support of more file types'.format(path, file_suffix))
 
     # No need to initialize converter if file type not present
-    for file_suffix in suffix2paths.keys():
+    for file_suffix in suffix2paths:
         if file_suffix == ".pdf":
             suffix2converter[file_suffix] = PDFToTextConverter()
         if file_suffix == ".txt":
@@ -104,7 +104,7 @@ def tika_convert_files_to_dicts(
         logger.error("Tika not installed. Please install tika and try again. Error: {}".format(ex))
         raise ex
     converter = TikaConverter()
-    paths = [p for p in Path(dir_path).glob("**/*")]
+    paths = list(Path(dir_path).glob("**/*"))
     allowed_suffixes = [".pdf", ".txt"]
     file_paths: List[Path] = []
 

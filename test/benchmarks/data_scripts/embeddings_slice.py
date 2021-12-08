@@ -26,7 +26,7 @@ with open(neg_passages_filename) as f:
         l = f.readline()
         passage_ids.append(str(l.split()[0]))
 assert len(passage_ids) == len(set(passage_ids))
-assert set([type(x) for x in passage_ids]) == {str}
+assert {type(x) for x in passage_ids} == {str}
 passage_ids = set(passage_ids)
 print("all_ids")
 print(len(passage_ids))

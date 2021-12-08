@@ -60,7 +60,7 @@ class EvalDocuments(BaseComponent):
         self.reciprocal_rank_sum = 0.0
         self.has_answer_reciprocal_rank_sum = 0.0
 
-    def run(self, documents: List[Document], labels: List[Label], top_k: Optional[int] = None):  # type: ignore
+    def run(self, documents: List[Document], labels: List[Label], top_k: Optional[int] = None):    # type: ignore
         """Run this node on one sample and its labels"""
         self.query_count += 1
         retriever_labels = get_label(labels, self.name)
@@ -93,12 +93,11 @@ class EvalDocuments(BaseComponent):
                 logger.warning("There seem to be empty string labels in the dataset suggesting that there "
                                "are samples with is_impossible=True. "
                                "Retrieval of these samples is always treated as correct.")
-        # If there are answer span annotations in the labels
         else:
             self.has_answer_count += 1
             retrieved_reciprocal_rank = self.reciprocal_rank_retrieved(retriever_labels, documents, top_k)
             self.reciprocal_rank_sum += retrieved_reciprocal_rank
-            correct_retrieval = True if retrieved_reciprocal_rank > 0 else False
+            correct_retrieval = retrieved_reciprocal_rank > 0
             self.has_answer_correct += int(correct_retrieval)
             self.has_answer_reciprocal_rank_sum += retrieved_reciprocal_rank
             self.has_answer_recall = self.has_answer_correct / self.has_answer_count
@@ -107,7 +106,7 @@ class EvalDocuments(BaseComponent):
         self.correct_retrieval_count += correct_retrieval
         self.recall = self.correct_retrieval_count / self.query_count
         self.mean_reciprocal_rank = self.reciprocal_rank_sum / self.query_count
-        
+
         self.top_k_used = top_k
 
         if self.debug:
@@ -271,8 +270,8 @@ class EvalAnswers(BaseComponent):
         if self.open_domain:
             top_1_em = calculate_em_str_multi(gold_labels, predictions[0])
             top_1_f1 = calculate_f1_str_multi(gold_labels, predictions[0])
-            top_k_em = max([calculate_em_str_multi(gold_labels, p) for p in predictions])
-            top_k_f1 = max([calculate_f1_str_multi(gold_labels, p) for p in predictions])
+            top_k_em = max(calculate_em_str_multi(gold_labels, p) for p in predictions)
+            top_k_f1 = max(calculate_f1_str_multi(gold_labels, p) for p in predictions)
         else:
             logger.error("Closed Domain Reader Evaluation not yet implemented for Pipelines. Use Reader.eval() instead.")
             return 0,0,0,0
@@ -334,12 +333,7 @@ class EvalAnswers(BaseComponent):
 
 
 def get_label(labels, node_id):
-    if type(labels) in [Label, MultiLabel]:
-        ret = labels
-    # If labels is a dict, then fetch the value using node_id (e.g. "EvalRetriever") as the key
-    else:
-        ret = labels[node_id]
-    return ret
+    return labels if type(labels) in [Label, MultiLabel] else labels[node_id]
 
 
 def calculate_em_str_multi(gold_labels, prediction):
@@ -355,7 +349,7 @@ def calculate_f1_str_multi(gold_labels, prediction):
     for gold_label in gold_labels:
         result = calculate_f1_str(gold_label, prediction)
         results.append(result)
-    if len(results) > 0:
+    if results:
         return max(results)
     else:
         return 0.0
@@ -383,7 +377,11 @@ def semantic_answer_similarity(predictions: List[List[str]],
     config = AutoConfig.from_pretrained(sas_model_name_or_path)
     cross_encoder_used = False
     if config.architectures is not None:
-        cross_encoder_used = any([arch.endswith('ForSequenceClassification') for arch in config.architectures])
+        cross_encoder_used = any(
+            arch.endswith('ForSequenceClassification')
+            for arch in config.architectures
+        )
+
 
     # Compute similarities
     top_1_sas = []
@@ -417,7 +415,7 @@ def semantic_answer_similarity(predictions: List[List[str]],
 
         # then select which embeddings will be used for similarity computations
         current_position = 0
-        for i, (len_p, len_l) in enumerate(lengths):
+        for len_p, len_l in lengths:
             pred_embeddings = embeddings[current_position:current_position + len_p, :]
             current_position += len_p
             label_embeddings = embeddings[current_position:current_position + len_l, :]
@@ -489,9 +487,7 @@ def _calculate_f1(gold_span: Dict[str, Any], predicted_span: Dict[str, Any]):
     if pred_indices and gold_indices and n_overlap:
         precision = n_overlap / len(pred_indices)
         recall = n_overlap / len(gold_indices)
-        f1 = (2 * precision * recall) / (precision + recall)
-
-        return f1
+        return (2 * precision * recall) / (precision + recall)
     else:
         return 0
 

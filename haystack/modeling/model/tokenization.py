@@ -257,12 +257,14 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
 
     # Extract relevant data
     tokenids_batch = tokenized_docs_batch["input_ids"]
-    offsets_batch = []
-    for o in tokenized_docs_batch["offset_mapping"]:
-        offsets_batch.append(np.array([x[0] for x in o]))
-    start_of_words_batch = []
-    for e in tokenized_docs_batch.encodings:
-        start_of_words_batch.append(_get_start_of_word_QA(e.words))
+    offsets_batch = [
+        np.array([x[0] for x in o])
+        for o in tokenized_docs_batch["offset_mapping"]
+    ]
+
+    start_of_words_batch = [
+        _get_start_of_word_QA(e.words) for e in tokenized_docs_batch.encodings
+    ]
 
     for i_doc, d in enumerate(pre_baskets):
         document_text = d["context"]
@@ -279,19 +281,21 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
             external_id = q["id"]
             # The internal_id depends on unique ids created for each process before forking
             internal_id = f"{indices[i_doc]}-{i_q}"
-            raw = {"document_text": document_text,
-                   "document_tokens": tokenids_batch[i_doc],
-                   "document_offsets": offsets_batch[i_doc],
-                   "document_start_of_word": start_of_words_batch[i_doc],
-                   "question_text": question_text,
-                   "question_tokens": question_tokenids,
-                   "question_offsets": question_offsets,
-                   "question_start_of_word": question_sow,
-                   "answers": q["answers"],
-                   }
-            # TODO add only during debug mode (need to create debug mode)
-            raw["document_tokens_strings"] = tokenized_docs_batch.encodings[i_doc].tokens
-            raw["question_tokens_strings"] = tokenized_q.encodings[0].tokens
+            raw = {
+                'document_text': document_text,
+                'document_tokens': tokenids_batch[i_doc],
+                'document_offsets': offsets_batch[i_doc],
+                'document_start_of_word': start_of_words_batch[i_doc],
+                'question_text': question_text,
+                'question_tokens': question_tokenids,
+                'question_offsets': question_offsets,
+                'question_start_of_word': question_sow,
+                'answers': q["answers"],
+                'document_tokens_strings': tokenized_docs_batch.encodings[
+                    i_doc
+                ].tokens,
+                'question_tokens_strings': tokenized_q.encodings[0].tokens,
+            }
 
             baskets.append(SampleBasket(raw=raw, id_internal=internal_id, id_external=external_id, samples=None))
     return baskets
@@ -299,8 +303,7 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
 
 def _get_start_of_word_QA(word_ids):
     words = np.array(word_ids)
-    start_of_word_single = [1] + list(np.ediff1d(words))
-    return start_of_word_single
+    return [1] + list(np.ediff1d(words))
 
 
 def tokenize_with_metadata(text: str, tokenizer) -> Dict[str, Any]:
@@ -352,13 +355,18 @@ def tokenize_with_metadata(text: str, tokenizer) -> Dict[str, Any]:
         #         start_of_word3.append(1)
         #         last_word = word_id
 
-        tokenized_dict = {"tokens": tokens2, "offsets": offsets2, "start_of_word": start_of_word2}
+        return {
+            "tokens": tokens2,
+            "offsets": offsets2,
+            "start_of_word": start_of_word2,
+        }
+
     else:
         # split text into "words" (here: simple whitespace tokenizer).
         words = text.split(" ")
         word_offsets = []
         cumulated = 0
-        for idx, word in enumerate(words):
+        for word in words:
             word_offsets.append(cumulated)
             cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
 
@@ -366,8 +374,7 @@ def tokenize_with_metadata(text: str, tokenizer) -> Dict[str, Any]:
         tokens, offsets, start_of_word = _words_to_tokens(
             words, word_offsets, tokenizer
         )
-        tokenized_dict = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
-    return tokenized_dict
+        return {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
 
 
 def truncate_sequences(
@@ -437,17 +444,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
 
         # empty / pure whitespace
         if len(w) == 0:
-          continue
-        # For the first word of a text: we just call the regular tokenize function.
-        # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
-        # see discussion here. https://github.com/huggingface/transformers/issues/1196
-        elif len(tokens) == 0:
+            continue
+        elif not tokens or type(tokenizer) != RobertaTokenizer:
             tokens_word = tokenizer.tokenize(w)
         else:
-            if type(tokenizer) == RobertaTokenizer:
-                tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
-            else:
-                tokens_word = tokenizer.tokenize(w)
+            tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue

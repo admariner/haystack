@@ -54,7 +54,7 @@ class StdoutLogger(BaseMLLogger):
 
     @classmethod
     def end_run(cls):
-        logger.info(f"**** End of Experiment **** ")
+        logger.info('**** End of Experiment **** ')
 
 
 class MLFlowLogger(BaseMLLogger):
@@ -81,7 +81,7 @@ class MLFlowLogger(BaseMLLogger):
             try:
                 mlflow.log_metrics(metrics, step=step)
             except ConnectionError:
-                logger.warning(f"ConnectionError in logging metrics to MLFlow.")
+                logger.warning('ConnectionError in logging metrics to MLFlow.')
             except Exception as e:
                 logger.warning(f"Failed to log metrics: {e}")
 
@@ -101,7 +101,7 @@ class MLFlowLogger(BaseMLLogger):
             try:
                 mlflow.log_artifacts(dir_path, artifact_path)
             except ConnectionError:
-                logger.warning(f"ConnectionError in logging artifacts to MLFlow")
+                logger.warning('ConnectionError in logging artifacts to MLFlow')
             except Exception as e:
                 logger.warning(f"Failed to log artifacts: {e}")
 

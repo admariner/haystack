@@ -7,7 +7,7 @@ random.seed(42)
 lines = []
 with open("psgs_w100_minus_gold_unshuffled.tsv") as f:
     f.readline()    # Remove column header
-    lines = [l for l in tqdm(f)]
+    lines = list(tqdm(f))
 
 tic = time.perf_counter()
 random.shuffle(lines)

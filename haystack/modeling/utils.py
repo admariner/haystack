@@ -168,7 +168,7 @@ def all_gather_list(data, group=None, max_size=16384):
         result = []
         for i in range(world_size):
             out_buffer = buffer[i * max_size: (i + 1) * max_size]
-            size = int.from_bytes(out_buffer[0:SIZE_STORAGE_BYTES], byteorder='big')
+            size = int.from_bytes(out_buffer[:SIZE_STORAGE_BYTES], byteorder='big')
             if size > 0:
                 result.append(pickle.loads(bytes(out_buffer[SIZE_STORAGE_BYTES: size + SIZE_STORAGE_BYTES].tolist())))
         return result
@@ -230,13 +230,12 @@ def grouper(iterable, n: int, worker_id: int = 0, total_workers: int = 1):
             if x:
                 yield i
                 x -= 1
+            elif y != 1:
+                y -= 1
+                continue
             else:
-                if y != 1:
-                    y -= 1
-                    continue
-                else:
-                    x = n
-                    y = (total_workers - 1) * n
+                x = n
+                y = (total_workers - 1) * n
 
     iterable = iter(enumerate(iterable))
     iterable = get_iter_start_pos(iterable)
@@ -275,7 +274,7 @@ def log_ascii_workers(n, logger):
     f_worker_lines = WORKER_F.split("\n")
     x_worker_lines = WORKER_X.split("\n")
     all_worker_lines = []
-    for i in range(n):
+    for _ in range(n):
         rand = np.random.randint(low=0,high=3)
         if(rand % 3 == 0):
             all_worker_lines.append(f_worker_lines)

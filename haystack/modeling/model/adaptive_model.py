@@ -49,11 +49,11 @@ class BaseAdaptiveModel:
         :param kwargs: Arguments to pass for loading the model.
         :return: Instance of a model.
         """
-        if (Path(kwargs["load_dir"]) / "model.onnx").is_file():
-            model = cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
-        else:
-            model = cls.subclasses["AdaptiveModel"].load(**kwargs)
-        return model
+        return (
+            cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
+            if (Path(kwargs["load_dir"]) / "model.onnx").is_file()
+            else cls.subclasses["AdaptiveModel"].load(**kwargs)
+        )
 
     def logits_to_preds(self, logits: torch.Tensor, **kwargs):
         """
@@ -334,10 +334,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :return: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
-        # This aggregates the loss per sample across multiple prediction heads
-        # Default is sum(), but you can configure any fn that takes [Tensor, Tensor ...] and returns [Tensor]
-        loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
-        return loss
+        return self.loss_aggregation_fn(
+            all_losses, global_step=global_step, batch=kwargs
+        )
 
     def prepare_labels(self, **kwargs):
         """
@@ -373,14 +372,14 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         if len(self.prediction_heads) > 0:
             for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
-                if lm_out == "per_token":
+                if (
+                    lm_out == "per_token"
+                    or lm_out not in ["per_sequence", "per_sequence_continuous"]
+                    and lm_out == "per_token_squad"
+                ):
                     output = self.dropout(sequence_output)
-                elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
+                elif lm_out in ["per_sequence", "per_sequence_continuous"]:
                     output = self.dropout(pooled_output)
-                elif (
-                    lm_out == "per_token_squad"
-                ):  # we need a per_token_squad because of variable metric computation later on...
-                    output = self.dropout(sequence_output)
                 else:
                     raise ValueError(
                         "Unknown extraction strategy from language model: {}".format(lm_out)
@@ -526,10 +525,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             pipeline_name=task_type_to_pipeline_map[task_type],
             framework="pt",
             model=model_name,
-            output=output_path/"model.onnx",
+            output=output_path / "model.onnx",
             opset=opset_version,
-            use_external_format=True if language_model_class=="XLMRoberta" else False
+            use_external_format=language_model_class == "XLMRoberta",
         )
+
 
         # save processor & model config files that are needed when loading the model with the Haystack.basics Inferencer
         processor = Processor.convert_from_transformers(

@@ -237,7 +237,7 @@ def get_scheduler(optimizer, opts):
                                       "CosineWarmup": "get_cosine_schedule_with_warmup",
                                      "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup"
             }
-            if schedule_name in scheduler_translations.keys():
+            if schedule_name in scheduler_translations:
                 schedule_name = scheduler_translations[schedule_name]
             # in contrast to torch, we actually get here a method and not a class
             sched_constructor = getattr(import_module('transformers.optimization'), schedule_name)

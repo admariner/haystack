@@ -39,7 +39,7 @@ print("==========================")
 
 question_generation_pipeline = QuestionGenerationPipeline(question_generator)
 for idx, document in enumerate(document_store):
-        
+
     print(f"\n * Generating questions for document {idx}: {document.content[:100]}...\n")
     result = question_generation_pipeline.run(documents=[document])
     print_questions(result)
@@ -55,7 +55,10 @@ print("==================================")
 retriever = ElasticsearchRetriever(document_store=document_store)
 rqg_pipeline = RetrieverQuestionGenerationPipeline(retriever, question_generator)
 
-print(f"\n * Generating questions for documents matching the query 'Arya Stark'\n")
+print(
+    "\n * Generating questions for documents matching the query 'Arya Stark'\n"
+)
+
 result = rqg_pipeline.run(query="Arya Stark")
 print_questions(result)
 

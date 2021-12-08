@@ -17,7 +17,7 @@ from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderToken
 
 @pytest.fixture()
 def docs():
-    documents = [
+    return [
         Document(
             content="""Aaron Aaron ( or ; ""Ahärôn"") is a prophet, high priest, and the brother of Moses in the Abrahamic religions. Knowledge of Aaron, along with his brother Moses, comes exclusively from religious texts, such as the Bible and Quran. The Hebrew Bible relates that, unlike Moses, who grew up in the Egyptian royal court, Aaron and his elder sister Miriam remained with their kinsmen in the eastern border-land of Egypt (Goshen). When Moses first confronted the Egyptian king about the Israelites, Aaron served as his brother's spokesman (""prophet"") to the Pharaoh. Part of the Law (Torah) that Moses received from""",
             meta={"name": "0"},
@@ -43,7 +43,6 @@ def docs():
             id="5",
         ),
     ]
-    return documents
 
 #TODO check if we this works with only "memory" arg
 @pytest.mark.parametrize(

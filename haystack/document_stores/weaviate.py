@@ -160,10 +160,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         """
         index = self._sanitize_index_name(index) or self.index
 
-        if self.custom_schema:
-            schema = self.custom_schema
-        else:
-            schema = {
+        schema = self.custom_schema or {
                     "classes": [
                         {
                             "class": index,
@@ -238,8 +235,8 @@ class WeaviateDocumentStore(BaseDocumentStore):
 
         if return_embedding and embedding:
             embedding = np.asarray(embedding, dtype=np.float32)
-        
-        document = Document.from_dict({
+
+        return Document.from_dict({
             "id": id,
             "content": content,
             "content_type":  content_type,
@@ -247,7 +244,6 @@ class WeaviateDocumentStore(BaseDocumentStore):
             "score": score,
             "embedding": embedding,
         })
-        return document
 
     def _create_document_field_map(self) -> Dict:
         return {
@@ -266,14 +262,16 @@ class WeaviateDocumentStore(BaseDocumentStore):
           'content': 'text_5'},
          'vector': []}'''
         index = self._sanitize_index_name(index) or self.index
-        document = None
-
         id = self._sanitize_id(id=id, index=index)
 
         result = self.weaviate_client.data_object.get_by_id(id, with_vector=True)
-        if result:
-            document = self._convert_weaviate_result_to_document(result, return_embedding=True)
-        return document
+        return (
+            self._convert_weaviate_result_to_document(
+                result, return_embedding=True
+            )
+            if result
+            else None
+        )
 
     def get_documents_by_id(self, ids: List[str], index: Optional[str] = None,
                             batch_size: int = 10_000) -> List[Document]:
@@ -334,11 +332,10 @@ class WeaviateDocumentStore(BaseDocumentStore):
                 }
                 weaviate_filters.append(weaviate_filter)
         if len(weaviate_filters) > 1:
-            filter_dict = {
+            return {
                 "operator": "Or",
                 "operands": weaviate_filters
             }
-            return filter_dict
         else:
             return weaviate_filter
 
@@ -360,7 +357,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         """
         Find the properties in the document that don't exist in the existing schema.
         """
-        return [item for item in doc.keys() if item not in cur_props]
+        return [item for item in doc if item not in cur_props]
 
     def write_documents(
             self, documents: Union[List[dict], List[Document]], index: Optional[str] = None,
@@ -425,7 +422,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         with tqdm(total=len(document_objects), disable=not self.progress_bar) as progress_bar:
             for document_batch in batched_documents:
                 docs_batch = ObjectsBatchRequest()
-                for idx, doc in enumerate(document_batch):
+                for doc in document_batch:
                     _doc = {
                         **doc.to_dict(field_map=self._create_document_field_map())
                     }
@@ -433,7 +430,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
 
                     # In order to have a flat structure in elastic + similar behaviour to the other DocumentStores,
                     # we "unnest" all value within "meta"
-                    if "meta" in _doc.keys():
+                    if "meta" in _doc:
                         for k, v in _doc["meta"].items():
                             _doc[k] = v
                         _doc.pop("meta")
@@ -442,7 +439,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
                     vector = _doc.pop(self.embedding_field)
 
                     if self.similarity=="cosine": self.normalize_embedding(vector)
-                    
+
                     # rename as weaviate doesn't like "_" in field names
                     _doc["contenttype"] = _doc.pop("content_type")
 
@@ -500,9 +497,8 @@ class WeaviateDocumentStore(BaseDocumentStore):
                     .with_fields("meta { count }")\
                     .do()
 
-        if "data" in result:
-            if "Aggregate" in result.get('data'):
-                doc_count = result.get('data').get('Aggregate').get(index)[0]['meta']['count']
+        if "data" in result and "Aggregate" in result.get('data'):
+            doc_count = result.get('data').get('Aggregate').get(index)[0]['meta']['count']
 
         return doc_count
 
@@ -527,8 +523,7 @@ class WeaviateDocumentStore(BaseDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def _get_all_documents_in_index(
         self,
@@ -556,9 +551,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
                 .do()
 
         all_docs = {}
-        if result and "data" in result and "Get" in result.get("data"):
-            if result.get("data").get("Get").get(index):
-                all_docs = result.get("data").get("Get").get(index)
+        if (
+            result
+            and "data" in result
+            and "Get" in result.get("data")
+            and result.get("data").get("Get").get(index)
+        ):
+            all_docs = result.get("data").get("Get").get(index)
 
         yield from all_docs
 
@@ -632,9 +631,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
                                       "use a custom GraphQL query in text format!")
 
         results = []
-        if query_output and "data" in query_output and "Get" in query_output.get("data"):
-            if query_output.get("data").get("Get").get(index):
-                results = query_output.get("data").get("Get").get(index)
+        if (
+            query_output
+            and "data" in query_output
+            and "Get" in query_output.get("data")
+            and query_output.get("data").get("Get").get(index)
+        ):
+            results = query_output.get("data").get("Get").get(index)
 
         documents = []
         for result in results:
@@ -669,9 +672,9 @@ class WeaviateDocumentStore(BaseDocumentStore):
         properties.append("_additional {id, certainty, vector}")
 
         if self.similarity=="cosine": self.normalize_embedding(query_emb)
-        
+
         query_emb = query_emb.reshape(1, -1).astype(np.float32)                
-        
+
         query_string = {
             "vector" : query_emb
         }
@@ -691,9 +694,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
                 .do()
 
         results = []
-        if query_output and "data" in query_output and "Get" in query_output.get("data"):
-            if query_output.get("data").get("Get").get(index):
-                results = query_output.get("data").get("Get").get(index)
+        if (
+            query_output
+            and "data" in query_output
+            and "Get" in query_output.get("data")
+            and query_output.get("data").get("Get").get(index)
+        ):
+            results = query_output.get("data").get("Get").get(index)
 
         documents = []
         for result in results:
@@ -787,12 +794,13 @@ class WeaviateDocumentStore(BaseDocumentStore):
         # create index if it doesn't exist yet
         self._create_schema_and_index_if_not_exist(index)
 
-        if not filters and not ids:
-            self.weaviate_client.schema.delete_class(index)
-            self._create_schema_and_index_if_not_exist(index)
-        else:
+        if filters or ids:
             docs_to_delete = self.get_all_documents(index, filters=filters)
             if ids:
                 docs_to_delete = [doc for doc in docs_to_delete if doc.id in ids]
             for doc in docs_to_delete:
                 self.weaviate_client.data_object.delete(doc.id)
+
+        else:
+            self.weaviate_client.schema.delete_class(index)
+            self._create_schema_and_index_if_not_exist(index)

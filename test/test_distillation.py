@@ -6,24 +6,26 @@ def test_distillation():
     teacher = FARMReader(model_name_or_path="prajjwal1/bert-small")
 
     # create a checkpoint of weights before distillation
-    student_weights = []
-    for name, weight in student.inferencer.model.named_parameters():
-        if "weight" in name and weight.requires_grad:
-            student_weights.append(torch.clone(weight))
+    student_weights = [
+        torch.clone(weight)
+        for name, weight in student.inferencer.model.named_parameters()
+        if "weight" in name and weight.requires_grad
+    ]
 
     assert len(student_weights) == 22
 
     student_weights.pop(-2) # pooler is not updated due to different attention head
-    
+
     student.distil_from(teacher, data_dir="samples/squad", train_filename="tiny.json")
 
     # create new checkpoint
     new_student_weights = [torch.clone(param) for param in student.inferencer.model.parameters()]
 
-    new_student_weights = []
-    for name, weight in student.inferencer.model.named_parameters():
-        if "weight" in name and weight.requires_grad:
-            new_student_weights.append(weight)
+    new_student_weights = [
+        weight
+        for name, weight in student.inferencer.model.named_parameters()
+        if "weight" in name and weight.requires_grad
+    ]
 
     assert len(new_student_weights) == 22
 

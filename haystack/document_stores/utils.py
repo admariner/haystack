@@ -34,9 +34,8 @@ def eval_data_from_json(
             logger.warning(f"No title information found for documents in QA file: {filename}")
 
         for document in data["data"]:
-            if max_docs:
-                if len(docs) > max_docs:
-                    break
+            if max_docs and len(docs) > max_docs:
+                break
             # Extracting paragraphs and their labels from a SQuAD document dict
             cur_docs, cur_labels, cur_problematic_ids = _extract_docs_and_labels_from_dict(
                 document,
@@ -46,7 +45,7 @@ def eval_data_from_json(
             docs.extend(cur_docs)
             labels.extend(cur_labels)
             problematic_ids.extend(cur_problematic_ids)
-    if len(problematic_ids) > 0:
+    if problematic_ids:
         logger.warning(f"Could not convert an answer for {len(problematic_ids)} questions.\n"
                        f"There were conversion errors for question ids: {problematic_ids}")
     return docs, labels
@@ -77,9 +76,8 @@ def eval_data_from_jsonl(
 
     with open(filename, "r", encoding='utf-8') as file:
         for document in file:
-            if max_docs:
-                if len(docs) > max_docs:
-                    break
+            if max_docs and len(docs) > max_docs:
+                break
             # Extracting paragraphs and their labels from a SQuAD document dict
             document_dict = json.loads(document)
             cur_docs, cur_labels, cur_problematic_ids = _extract_docs_and_labels_from_dict(document_dict, preprocessor, open_domain)
@@ -87,15 +85,14 @@ def eval_data_from_jsonl(
             labels.extend(cur_labels)
             problematic_ids.extend(cur_problematic_ids)
 
-            if batch_size is not None:
-                if len(docs) >= batch_size:
-                    if len(problematic_ids) > 0:
-                        logger.warning(f"Could not convert an answer for {len(problematic_ids)} questions.\n"
-                                       f"There were conversion errors for question ids: {problematic_ids}")
-                    yield docs, labels
-                    docs = []
-                    labels = []
-                    problematic_ids = []
+            if batch_size is not None and len(docs) >= batch_size:
+                if problematic_ids:
+                    logger.warning(f"Could not convert an answer for {len(problematic_ids)} questions.\n"
+                                   f"There were conversion errors for question ids: {problematic_ids}")
+                yield docs, labels
+                docs = []
+                labels = []
+                problematic_ids = []
 
     yield docs, labels
 
@@ -184,7 +181,6 @@ def _extract_docs_and_labels_from_dict(document_dict: Dict, preprocessor: PrePro
                             no_answer=qa.get("is_impossible", False),
                             origin="gold-label",
                         )
-                        labels.append(label)
                     else:
                         ans_position = cur_full_doc.content[answer["answer_start"]:answer["answer_start"] + len(ans)]
                         if ans != ans_position:
@@ -222,7 +218,7 @@ def _extract_docs_and_labels_from_dict(document_dict: Dict, preprocessor: PrePro
                             no_answer=qa.get("is_impossible", False),
                             origin="gold-label",
                         )
-                        labels.append(label)
+                    labels.append(label)
             else:
                 # for no_answer we need to assign each split as not fitting to the question
                 for s in splits:

@@ -51,11 +51,10 @@ class EntityExtractor(BaseComponent):
         """
         This function can be called to perform entity extraction when using the node in isolation.
         """
-        entities = self.model(text)
-        return entities
+        return self.model(text)
 
 
-def simplify_ner_for_qa(output): 
+def simplify_ner_for_qa(output):
     """
     Returns a simplified version of the output dictionary
     with the following structure:
@@ -71,10 +70,12 @@ def simplify_ner_for_qa(output):
     compact_output = []
     for answer in output["answers"]:
 
-        entities = []
-        for entity in answer.meta["entities"]:
-            if entity["start"] >= answer.offsets_in_document[0].start and entity["end"] <= answer.offsets_in_document[0].end:
-                entities.append(entity["word"])  
+        entities = [
+            entity["word"]
+            for entity in answer.meta["entities"]
+            if entity["start"] >= answer.offsets_in_document[0].start
+            and entity["end"] <= answer.offsets_in_document[0].end
+        ]
 
         compact_output.append({
             "answer": answer.answer,
