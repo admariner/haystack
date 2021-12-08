@@ -81,8 +81,13 @@ def test_get_documents():
         {'files': (Path(__file__).parent / "samples"/"docs"/"doc_1.txt").open('rb')},
         {'files': (Path(__file__).parent / "samples"/"docs"/"doc_2.txt").open('rb')}
     ]
-    for index, fi in enumerate(files_to_upload):
-        response = client.post(url="/file-upload", files=fi, data={"meta": f'{{"meta_key": "meta_value_get"}}'})
+    for fi in files_to_upload:
+        response = client.post(
+            url="/file-upload",
+            files=fi,
+            data={"meta": '{"meta_key": "meta_value_get"}'},
+        )
+
         assert 200 == response.status_code
 
     # Get the documents
@@ -96,7 +101,7 @@ def test_get_documents():
     assert "doc_1.txt" in names
     assert "doc_2.txt" in names
     meta_keys = [doc["meta"]["meta_key"] for doc in response_json]
-    assert all("meta_value_get"==meta_key for meta_key in meta_keys)
+    assert all(meta_key == "meta_value_get" for meta_key in meta_keys)
 
 
 def test_delete_documents():

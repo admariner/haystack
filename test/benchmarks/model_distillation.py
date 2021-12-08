@@ -35,12 +35,8 @@ def combine_config(configs: dict) -> List[dict]:
         combinations_list = []
         for item in config:
             combinations_list += [c + [(config_key, item)] for c in current_combinations]
-    
-    combinations = []
-    for combination in combinations_list:
-        combinations.append(dict(combination))
-    
-    return combinations
+
+    return [dict(combination) for combination in combinations_list]
         
 
 def download_file(url: str, path: Path):

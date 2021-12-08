@@ -104,11 +104,10 @@ class BaseDocumentStore(BaseComponent):
     def __next__(self):
         if len(self.ids_iterator) == 0:
             raise StopIteration
-        else:
-            curr_id = self.ids_iterator[0]
-            ret = self.get_document_by_id(curr_id)
-            self.ids_iterator = self.ids_iterator[1:]
-            return ret
+        curr_id = self.ids_iterator[0]
+        ret = self.get_document_by_id(curr_id)
+        self.ids_iterator = self.ids_iterator[1:]
+        return ret
 
     @abstractmethod
     def get_all_labels(self, index: Optional[str] = None, filters: Optional[Dict[str, List[str]]] = None) -> List[Label]:
@@ -156,10 +155,7 @@ class BaseDocumentStore(BaseComponent):
             # whether we are in an open / closed domain setting,
             # or if there are fields in the meta data that we should group by (set using group_by_meta)
             group_by_id_list: list = []
-            if open_domain:
-                group_by_id_list = [l.query]
-            else:
-                group_by_id_list = [l.document.id, l.query]
+            group_by_id_list = [l.query] if open_domain else [l.document.id, l.query]
             if aggregate_by_meta:
                 if type(aggregate_by_meta) == str:
                     aggregate_by_meta = [aggregate_by_meta]
@@ -256,19 +252,30 @@ class BaseDocumentStore(BaseComponent):
         """
         # TODO improve support for PreProcessor when adding eval data
         if preprocessor is not None:
-            assert preprocessor.split_by != "sentence", f"Split by sentence not supported.\n" \
-                                                    f"Please set 'split_by' to either 'word' or 'passage' in the supplied PreProcessor."
-            assert preprocessor.split_respect_sentence_boundary == False, \
-                f"split_respect_sentence_boundary not supported yet.\n" \
-                f"Please set 'split_respect_sentence_boundary' to False in the supplied PreProcessor."
-            assert preprocessor.split_overlap == 0, f"Overlapping documents are currently not supported when adding eval data.\n" \
-                                                    f"Please set 'split_overlap=0' in the supplied PreProcessor."
-            assert preprocessor.clean_empty_lines == False, f"clean_empty_lines currently not supported when adding eval data.\n" \
-                                                    f"Please set 'clean_empty_lines=False' in the supplied PreProcessor."
-            assert preprocessor.clean_whitespace == False, f"clean_whitespace is currently not supported when adding eval data.\n" \
-                                                    f"Please set 'clean_whitespace=False' in the supplied PreProcessor."
-            assert preprocessor.clean_header_footer == False, f"clean_header_footer is currently not supported when adding eval data.\n" \
-                                                    f"Please set 'clean_header_footer=False' in the supplied PreProcessor."
+            assert (
+                preprocessor.split_by != "sentence"
+            ), "Split by sentence not supported.\nPlease set 'split_by' to either 'word' or 'passage' in the supplied PreProcessor."
+
+            assert (
+                preprocessor.split_respect_sentence_boundary == False
+            ), "split_respect_sentence_boundary not supported yet.\nPlease set 'split_respect_sentence_boundary' to False in the supplied PreProcessor."
+
+            assert (
+                preprocessor.split_overlap == 0
+            ), "Overlapping documents are currently not supported when adding eval data.\nPlease set 'split_overlap=0' in the supplied PreProcessor."
+
+            assert (
+                preprocessor.clean_empty_lines == False
+            ), "clean_empty_lines currently not supported when adding eval data.\nPlease set 'clean_empty_lines=False' in the supplied PreProcessor."
+
+            assert (
+                preprocessor.clean_whitespace == False
+            ), "clean_whitespace is currently not supported when adding eval data.\nPlease set 'clean_whitespace=False' in the supplied PreProcessor."
+
+            assert (
+                preprocessor.clean_header_footer == False
+            ), "clean_header_footer is currently not supported when adding eval data.\nPlease set 'clean_header_footer=False' in the supplied PreProcessor."
+
 
         file_path = Path(filename)
         if file_path.suffix == ".json":
@@ -357,7 +364,7 @@ class BaseDocumentStore(BaseComponent):
             documents_found = self.get_documents_by_id(ids=[doc.id for doc in documents], index=index)
             ids_exist_in_db: List[str] = [doc.id for doc in documents_found]
 
-            if len(ids_exist_in_db) > 0 and duplicate_documents == 'fail':
+            if ids_exist_in_db and duplicate_documents == 'fail':
                 raise DuplicateDocumentError(f"Document with ids '{', '.join(ids_exist_in_db)} already exists"
                                              f" in index = '{index}'.")
 

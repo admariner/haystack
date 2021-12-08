@@ -53,8 +53,7 @@ def haystack_version():
 @router.post("/query", response_model=QueryResponse, response_model_exclude_none=True)
 def query(request: QueryRequest):
     with concurrency_limiter.run():
-        result = _process_request(PIPELINE, request)
-        return result
+        return _process_request(PIPELINE, request)
 
 
 def _process_request(pipeline, request) -> QueryResponse:
@@ -85,8 +84,10 @@ def _format_filters(filters):
     """
     new_filters = {}
     if filters is None:
-        logger.warning(f"Request with deprecated filter format ('\"filters\": null'). "
-                       f"Remove empty filters from params to be compliant with future versions")
+        logger.warning(
+            'Request with deprecated filter format (\'"filters": null\'). Remove empty filters from params to be compliant with future versions'
+        )
+
     else:
         for key, values in filters.items():
             if values is None:

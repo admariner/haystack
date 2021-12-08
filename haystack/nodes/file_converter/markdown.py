@@ -64,6 +64,4 @@ class MarkdownConverter(BaseConverter):
 
         # extract text
         soup = BeautifulSoup(html, "html.parser")
-        text = ''.join(soup.findAll(text=True))
-
-        return text
+        return ''.join(soup.findAll(text=True))

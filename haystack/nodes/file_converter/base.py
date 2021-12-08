@@ -83,10 +83,7 @@ class BaseConverter(BaseComponent):
         except langdetect.lang_detect_exception.LangDetectException:
             lang = None
 
-        if lang in self.valid_languages:
-            return True
-        else:
-            return False
+        return lang in self.valid_languages
 
     def run(self, file_paths: Union[Path, List[Path]],  # type: ignore
             meta: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,  # type: ignore

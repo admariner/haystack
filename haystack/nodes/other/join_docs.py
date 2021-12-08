@@ -26,7 +26,11 @@ class JoinDocuments(BaseComponent):
                         to each retriever score. This param is not compatible with the `concatenate` join_mode.
         :param top_k_join: Limit documents to top_k based on the resulting scores of the join.
         """
-        assert join_mode in ["concatenate", "merge"], f"JoinDocuments node does not support '{join_mode}' join_mode."
+        assert join_mode in {
+            "concatenate",
+            "merge",
+        }, f"JoinDocuments node does not support '{join_mode}' join_mode."
+
 
         assert not (
             weights is not None and join_mode == "concatenate"
@@ -47,10 +51,7 @@ class JoinDocuments(BaseComponent):
                     document_map[doc.id] = doc
         elif self.join_mode == "merge":
             document_map = {}
-            if self.weights:
-                weights = self.weights
-            else:
-                weights = [1/len(inputs)] * len(inputs)
+            weights = self.weights or [1/len(inputs)] * len(inputs)
             for input_from_node, weight in zip(inputs, weights):
                 for doc in input_from_node["documents"]:
                     if document_map.get(doc.id):  # document already exists; update score

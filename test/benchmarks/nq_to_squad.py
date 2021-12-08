@@ -212,10 +212,10 @@ def nq_to_squad(record):
                 "text": answer}
       answers.append(answer)
 
-  if len(answers) == 0:
-      global n_long_ans_only
-      n_long_ans_only += 1
-      return
+  if not answers:
+    global n_long_ans_only
+    n_long_ans_only += 1
+    return
 
   answers, is_impossible = reduce_annotations(anno_types, answers)
 

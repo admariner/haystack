@@ -317,9 +317,7 @@ def test_parallel_paths_in_pipeline_graph_with_branching():
     class JoinNode(RootNode):
         def run(self, output=None, inputs=None):
             if inputs:
-                output = ""
-                for input_dict in inputs:
-                    output += input_dict["output"]
+                output = "".join(input_dict["output"] for input_dict in inputs)
             return {"output": output}, "output_1"
 
     pipeline = Pipeline()

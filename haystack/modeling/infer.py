@@ -241,14 +241,11 @@ class Inferencer:
         :return: None
         """
         self.process_pool = None
-        if num_processes == 0 or num_processes == 1:  # disable multiprocessing
+        if num_processes in [0, 1]:  # disable multiprocessing
             self.process_pool = None
         else:
             if num_processes is None:  # use all CPU cores
-                if mp.cpu_count() > 3:
-                    num_processes = mp.cpu_count() - 1
-                else:
-                    num_processes = mp.cpu_count()
+                num_processes = mp.cpu_count() - 1 if mp.cpu_count() > 3 else mp.cpu_count()
             self.process_pool = mp.Pool(processes=num_processes)
             logger.info(
                 f"Got ya {num_processes} parallel workers to do inference ..."
@@ -398,8 +395,10 @@ class Inferencer:
         for dataset, tensor_names, problematic_sample_ids, baskets in results:
             self.problematic_sample_ids.update(problematic_sample_ids)
             if dataset is None:
-                logger.error(f"Part of the dataset could not be converted! \n"
-                             f"BE AWARE: The order of predictions will not conform with the input order!")
+                logger.error(
+                    'Part of the dataset could not be converted! \nBE AWARE: The order of predictions will not conform with the input order!'
+                )
+
             else:
                 # TODO change format of formatted_preds in QA (list of dicts)
                 if aggregate_preds:
@@ -444,7 +443,7 @@ class Inferencer:
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )  # type ignore
         preds_all = []
-        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=self.disable_tqdm)):
+        for i, batch in enumerate(tqdm(data_loader, desc='Inferencing Samples', unit=" Batches", disable=self.disable_tqdm)):
             batch = {key: batch[key].to(self.devices[0]) for key in batch}
             batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
 
@@ -482,8 +481,7 @@ class Inferencer:
         # TODO so that preds of the right shape are passed in to formatted_preds
         unaggregated_preds_all = []
 
-        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=self.disable_tqdm)):
-
+        for batch in tqdm(data_loader, desc='Inferencing Samples', unit=" Batches", disable=self.disable_tqdm):
             batch = {key: batch[key].to(self.devices[0]) for key in batch}
 
             # get logits
@@ -504,10 +502,11 @@ class Inferencer:
 
         # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
         logits = [None]
-        preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
-                                               preds=unaggregated_preds_all,
-                                               baskets=baskets)  # type ignore
-        return preds_all
+        return self.model.formatted_preds(
+            logits=logits,  # For QA we collected preds per batch and do not want to pass logits
+            preds=unaggregated_preds_all,
+            baskets=baskets,
+        )
 
 
     def extract_vectors(self, dicts: List[Dict], extraction_strategy: Optional[str] = "cls_token", extraction_layer: Optional[int] = -1):

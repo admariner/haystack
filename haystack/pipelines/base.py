@@ -204,11 +204,10 @@ class Pipeline(BasePipeline):
         """
         if self.root_node is None:
             root_node = inputs[0]
-            if root_node in ["Query", "File"]:
-                self.root_node = root_node
-                self.graph.add_node(root_node, component=RootNode())
-            else:
+            if root_node not in ["Query", "File"]:
                 raise KeyError(f"Root node '{root_node}' is invalid. Available options are 'Query' and 'File'.")
+            self.root_node = root_node
+            self.graph.add_node(root_node, component=RootNode())
         component.name = name
         self.graph.add_node(name, component=component, inputs=inputs)
 
@@ -245,8 +244,7 @@ class Pipeline(BasePipeline):
         :param name: The name of the node.
         """
         graph_node = self.graph.nodes.get(name)
-        component = graph_node["component"] if graph_node else None
-        return component
+        return graph_node["component"] if graph_node else None
 
     def set_node(self, name: str, component):
         """
@@ -285,19 +283,20 @@ class Pipeline(BasePipeline):
                           then be found in the dict returned by this method under the key "_debug"
         """
         # validate the node names
-        if params:
-            if not all(node_id in self.graph.nodes for node_id in params.keys()):
+        if params and any(
+            node_id not in self.graph.nodes for node_id in params.keys()
+        ):
 
-                # Might be a non-targeted param. Verify that too
-                not_a_node = set(params.keys()) - set(self.graph.nodes)
-                valid_global_params = set()
-                for node_id in self.graph.nodes:
-                    run_signature_args = inspect.signature(self.graph.nodes[node_id]["component"].run).parameters.keys()
-                    valid_global_params |= set(run_signature_args)
-                invalid_keys = [key for key in not_a_node if key not in valid_global_params]
+            # Might be a non-targeted param. Verify that too
+            not_a_node = set(params.keys()) - set(self.graph.nodes)
+            valid_global_params = set()
+            for node_id in self.graph.nodes:
+                run_signature_args = inspect.signature(self.graph.nodes[node_id]["component"].run).parameters.keys()
+                valid_global_params |= set(run_signature_args)
+            invalid_keys = [key for key in not_a_node if key not in valid_global_params]
 
-                if invalid_keys:
-                    raise ValueError(f"No node(s) or global parameter(s) named {', '.join(invalid_keys)} found in pipeline.")
+            if invalid_keys:
+                raise ValueError(f"No node(s) or global parameter(s) named {', '.join(invalid_keys)} found in pipeline.")
 
         node_output = None
         queue = {
@@ -456,7 +455,7 @@ class Pipeline(BasePipeline):
         # - the f1 metric depicting how well the answer overlaps with the gold label on token basis
         # - the sas metric depciting how well the answer matches the gold label on a semantic basis.
         #   this will be calculated on all queries in eval() for performance reasons if a sas model has been provided
-        answers = node_output.get("answers", None)
+        answers = node_output.get("answers")
         if answers is not None:
             answer_cols_to_keep = ["answer", "document_id", "offsets_in_document", "context"]
             df_answers = pd.DataFrame(answers, columns=answer_cols_to_keep)
@@ -480,7 +479,7 @@ class Pipeline(BasePipeline):
         # - the gold_id_match metric depicting whether one of the gold document ids matches the document
         # - the answer_match metric depicting whether the document contains the answer
         # - the gold_id_or_answer_match metric depicting whether one of the former two conditions are met
-        documents = node_output.get("documents", None)
+        documents = node_output.get("documents")
         if documents is not None:
             document_cols_to_keep = ["content", "id"]
             df_docs = pd.DataFrame(documents, columns=document_cols_to_keep)
@@ -510,12 +509,11 @@ class Pipeline(BasePipeline):
 
     def get_next_nodes(self, node_id: str, stream_id: str):
         current_node_edges = self.graph.edges(node_id, data=True)
-        next_nodes = [
+        return [
             next_node
             for _, next_node, data in current_node_edges
             if not stream_id or data["label"] == stream_id or stream_id == "output_all"
         ]
-        return next_nodes
 
     def get_nodes_by_class(self, class_type) -> List[Any]:
         """
@@ -529,10 +527,9 @@ class Pipeline(BasePipeline):
         :return: List of components that are an instance the requested class
         """
 
-        matches = [self.graph.nodes.get(node)["component"]
+        return [self.graph.nodes.get(node)["component"]
                    for node in self.graph.nodes
                    if isinstance(self.graph.nodes.get(node)["component"], class_type)]
-        return matches
 
     def get_document_store(self) -> Optional[BaseDocumentStore]:
         """
@@ -557,9 +554,10 @@ class Pipeline(BasePipeline):
         try:
             import pygraphviz
         except ImportError:
-            raise ImportError(f"Could not import `pygraphviz`. Please install via: \n"
-                              f"pip install pygraphviz\n"
-                              f"(You might need to run this first: apt install libgraphviz-dev graphviz )")
+            raise ImportError(
+                'Could not import `pygraphviz`. Please install via: \npip install pygraphviz\n(You might need to run this first: apt install libgraphviz-dev graphviz )'
+            )
+
 
         graphviz = to_agraph(self.graph)
         graphviz.layout("dot")
@@ -633,7 +631,7 @@ class Pipeline(BasePipeline):
         :param components: dict containing component objects.
         """
         try:
-            if name in components.keys():  # check if component is already loaded.
+            if name in components:  # check if component is already loaded.
                 return components[name]
 
             component_params = definitions[name].get("params", {})
@@ -643,7 +641,7 @@ class Pipeline(BasePipeline):
             for key, value in component_params.items():
                 # Component params can reference to other components. For instance, a Retriever can reference a
                 # DocumentStore defined in the YAML. All references should be recursively resolved.
-                if isinstance(value, str) and value in definitions.keys():  # check if the param value is a reference to another component.
+                if isinstance(value, str) and value in definitions:  # check if the param value is a reference to another component.
                     if value not in components.keys():  # check if the referenced component is already loaded.
                         cls._load_or_get_component(name=value, definitions=definitions, components=components)
                     component_params[key] = components[value]  # substitute reference (string) with the component object.
@@ -686,13 +684,15 @@ class Pipeline(BasePipeline):
                     components[node]["params"][key] = value["type"]
                     sub_component_signature = inspect.signature(BaseComponent.subclasses[value["type"]]).parameters
                     params = {
-                        k: v for k, v in value["params"].items()
-                        if sub_component_signature[k].default != v or return_defaults is True
+                        k: v
+                        for k, v in value["params"].items()
+                        if sub_component_signature[k].default != v
+                        or return_defaults
                     }
+
                     components[value["type"]] = {"name": value["type"], "type": value["type"], "params": params}
-                else:
-                    if component_signature[key].default != value or return_defaults is True:
-                        components[node]["params"][key] = value
+                elif component_signature[key].default != value or return_defaults:
+                    components[node]["params"][key] = value
 
             # create the Pipeline definition with how the Component are connected
             pipelines[pipeline_name]["nodes"].append({"name": node, "inputs": list(self.graph.predecessors(node))})
@@ -907,13 +907,12 @@ class RayPipeline(Pipeline):
         for node_config in pipeline_config["nodes"]:
             if pipeline.root_node is None:
                 root_node = node_config["inputs"][0]
-                if root_node in ["Query", "File"]:
-                    pipeline.root_node = root_node
-                    handle = cls._create_ray_deployment(component_name=root_node, pipeline_config=data)
-                    pipeline._add_ray_deployment_in_graph(handle=handle, name=root_node, outgoing_edges=1,  inputs=[])
-                else:
+                if root_node not in ["Query", "File"]:
                     raise KeyError(f"Root node '{root_node}' is invalid. Available options are 'Query' and 'File'.")
 
+                pipeline.root_node = root_node
+                handle = cls._create_ray_deployment(component_name=root_node, pipeline_config=data)
+                pipeline._add_ray_deployment_in_graph(handle=handle, name=root_node, outgoing_edges=1,  inputs=[])
             name = node_config["name"]
             component_type = definitions[name]["type"]
             component_class = BaseComponent.get_subclass(component_type)
@@ -940,8 +939,7 @@ class RayPipeline(Pipeline):
         """
         RayDeployment = serve.deployment(_RayDeploymentWrapper, name=component_name, num_replicas=replicas)  # type: ignore
         RayDeployment.deploy(pipeline_config, component_name)
-        handle = RayDeployment.get_handle()
-        return handle
+        return RayDeployment.get_handle()
 
     def run(  # type: ignore
         self,
@@ -1056,7 +1054,7 @@ class _RayDeploymentWrapper:
         :param pipeline_config: Pipeline YAML parsed as a dict.
         :param component_name: Component Class name.
         """
-        if component_name in ["Query", "File"]:
+        if component_name in {"Query", "File"}:
             self.node = RootNode()
         else:
             self.node = BaseComponent.load_from_pipeline_config(pipeline_config, component_name)

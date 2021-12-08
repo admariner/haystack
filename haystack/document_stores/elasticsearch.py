@@ -162,7 +162,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             self.similarity = similarity
         else:
             raise Exception(f"Invalid value {similarity} for similarity in ElasticSearchDocumentStore constructor. Choose between 'cosine', 'l2' and 'dot_product'")
-        if index_type in ["flat", "hnsw"]:
+        if index_type in {"flat", "hnsw"}:
             self.index_type = index_type
         else:
             raise Exception("Invalid value for index_type in constructor. Choose between 'flat' and 'hnsw'")
@@ -218,7 +218,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         try:
             # ping uses a HEAD request on the root URI. In some cases, the user might not have permissions for that,
             # resulting in a HTTP Forbidden 403 response.
-            if username in ["", "elastic"]:
+            if username in {"", "elastic"}:
                 status = client.ping()
                 if not status:
                     raise ConnectionError(
@@ -234,7 +234,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         # Create list of host(s) + port(s) to allow direct client connections to multiple elasticsearch nodes
         if isinstance(host, list):
             if isinstance(port, list):
-                if not len(port) == len(host):
+                if len(port) != len(host):
                     raise ValueError("Length of list `host` must match length of list `port`")
                 hosts = [{"host":h, "port":p} for h, p in zip(host,port)]
             else:
@@ -354,13 +354,17 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         else:
             return None
 
-    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:  # type: ignore
+    def get_documents_by_id(self, ids: List[str], index: Optional[str] = None) -> List[Document]:    # type: ignore
         """Fetch documents by specifying a list of text id strings"""
         index = index or self.index
         query = {"query": {"ids": {"values": ids}}}
         result = self.client.search(index=index, body=query)["hits"]["hits"]
-        documents = [self._convert_es_hit_to_document(hit, return_embedding=self.return_embedding) for hit in result]
-        return documents
+        return [
+            self._convert_es_hit_to_document(
+                hit, return_embedding=self.return_embedding
+            )
+            for hit in result
+        ]
 
     def get_metadata_values_by_key(
         self,
@@ -387,9 +391,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                 }
             }
         if filters:
-            filter_clause = []
-            for key, values in filters.items():
-                filter_clause.append({"terms": {key: values}})
+            filter_clause = [{"terms": {key: values}} for key, values in filters.items()]
             if not body.get("query"):
                 body["query"] = {"bool": {}}
             body["query"]["bool"].update({"filter": filter_clause})
@@ -454,9 +456,11 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             }  # type: Dict[str, Any]
 
             # cast embedding type as ES cannot deal with np.array
-            if _doc[self.embedding_field] is not None:
-                if type(_doc[self.embedding_field]) == np.ndarray:
-                    _doc[self.embedding_field] = _doc[self.embedding_field].tolist()
+            if (
+                _doc[self.embedding_field] is not None
+                and type(_doc[self.embedding_field]) == np.ndarray
+            ):
+                _doc[self.embedding_field] = _doc[self.embedding_field].tolist()
 
             # rename id for elastic
             _doc["_id"] = str(_doc.pop("id"))
@@ -467,7 +471,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
 
             # In order to have a flat structure in elastic + similar behaviour to the other DocumentStores,
             # we "unnest" all value within "meta"
-            if "meta" in _doc.keys():
+            if "meta" in _doc:
                 for k, v in _doc["meta"].items():
                     _doc[k] = v
                 _doc.pop("meta")
@@ -496,7 +500,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
 
         labels = [Label.from_dict(label) if isinstance(label, dict) else label for label in labels]
         duplicate_ids: list = [label.id for label in self._get_duplicate_labels(labels, index=index)]
-        if len(duplicate_ids) > 0:
+        if duplicate_ids:
             logger.warning(f"Duplicate Label IDs: Inserting a Label whose id already exists in this document store."
                            f" This will overwrite the old Label. Please make sure Label.id is a unique identifier of"
                            f" the answer annotation and not the question."
@@ -563,8 +567,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             body["query"]["bool"]["filter"] = filter_clause
 
         result = self.client.count(index=index, body=body)
-        count = result["count"]
-        return count
+        return result["count"]
 
     def get_label_count(self, index: Optional[str] = None) -> int:
         """
@@ -596,8 +599,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             body["query"]["bool"]["filter"] = filter_clause
 
         result = self.client.count(index=index, body=body)
-        count = result["count"]
-        return count
+        return result["count"]
 
     def get_all_documents(
         self,
@@ -619,8 +621,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         result = self.get_all_documents_generator(
             index=index, filters=filters, return_embedding=return_embedding, batch_size=batch_size
         )
-        documents = list(result)
-        return documents
+        return list(result)
 
     def get_all_documents_generator(
         self,
@@ -661,8 +662,9 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         """
         index = index or self.label_index
         result = list(self._get_all_documents_in_index(index=index, filters=filters, batch_size=batch_size))
-        labels = [Label.from_dict({**hit["_source"], "id": hit["_id"]}) for hit in result]
-        return labels
+        return [
+            Label.from_dict({**hit["_source"], "id": hit["_id"]}) for hit in result
+        ]
 
     def _get_all_documents_in_index(
         self,
@@ -677,13 +679,9 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         body: dict = {"query": {"bool": {}}}
 
         if filters:
-            filter_clause = []
-            for key, values in filters.items():
-                filter_clause.append(
-                    {
+            filter_clause = [{
                         "terms": {key: values}
-                    }
-                )
+                    } for key, values in filters.items()]
             body["query"]["bool"]["filter"] = filter_clause
 
         if only_documents_without_embedding:
@@ -719,16 +717,11 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                         {"bool": {"must":
                                       {"match_all": {}}}}}  # type: Dict[str, Any]
             if filters:
-                filter_clause = []
-                for key, values in filters.items():
-                    filter_clause.append(
-                        {
+                filter_clause = [{
                             "terms": {key: values}
-                        }
-                    )
+                        } for key, values in filters.items()]
                 body["query"]["bool"]["filter"] = filter_clause
 
-        # Retrieval via custom query
         elif custom_query:  # substitute placeholder for query and filters for the custom_query template string
             template = Template(custom_query)
             # replace all "${query}" placeholder(s) with query
@@ -744,7 +737,6 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             # add top_k
             body["size"] = str(top_k)
 
-        # Default Retrieval via BM25 using the user query on `self.search_fields`
         else:
             if not isinstance(query, str):
                 logger.warning("The query provided seems to be not a string, but an object "
@@ -777,8 +769,12 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         logger.debug(f"Retriever query: {body}")
         result = self.client.search(index=index, body=body)["hits"]["hits"]
 
-        documents = [self._convert_es_hit_to_document(hit, return_embedding=self.return_embedding) for hit in result]
-        return documents
+        return [
+            self._convert_es_hit_to_document(
+                hit, return_embedding=self.return_embedding
+            )
+            for hit in result
+        ]
 
     def query_by_embedding(self,
                            query_emb: np.ndarray,
@@ -805,61 +801,62 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
 
         if not self.embedding_field:
             raise RuntimeError("Please specify arg `embedding_field` in ElasticsearchDocumentStore()")
-        else:
-            # +1 in similarity to avoid negative numbers (for cosine sim)
-            body = {
-                "size": top_k,
-                "query": self._get_vector_similarity_query(query_emb, top_k)
-            }
-            if filters:
-                filter_clause = []
-                for key, values in filters.items():
-                    if type(values) != list:
-                        raise ValueError(f'Wrong filter format for key "{key}": Please provide a list of allowed values for each key. '
-                                         'Example: {"name": ["some", "more"], "category": ["only_one"]} ')
-                    filter_clause.append(
-                        {
-                            "terms": {key: values}
-                        }
-                    )
-                body["query"]["script_score"]["query"] = {"bool": {"filter": filter_clause}}
+        # +1 in similarity to avoid negative numbers (for cosine sim)
+        body = {
+            "size": top_k,
+            "query": self._get_vector_similarity_query(query_emb, top_k)
+        }
+        if filters:
+            filter_clause = []
+            for key, values in filters.items():
+                if type(values) != list:
+                    raise ValueError(f'Wrong filter format for key "{key}": Please provide a list of allowed values for each key. '
+                                     'Example: {"name": ["some", "more"], "category": ["only_one"]} ')
+                filter_clause.append(
+                    {
+                        "terms": {key: values}
+                    }
+                )
+            body["query"]["script_score"]["query"] = {"bool": {"filter": filter_clause}}
 
-            excluded_meta_data: Optional[list] = None
+        excluded_meta_data: Optional[list] = None
 
-            if self.excluded_meta_data:
-                excluded_meta_data = deepcopy(self.excluded_meta_data)
+        if self.excluded_meta_data:
+            excluded_meta_data = deepcopy(self.excluded_meta_data)
 
-                if return_embedding is True and self.embedding_field in excluded_meta_data:
-                    excluded_meta_data.remove(self.embedding_field)
-                elif return_embedding is False and self.embedding_field not in excluded_meta_data:
-                    excluded_meta_data.append(self.embedding_field)
-            elif return_embedding is False:
-                excluded_meta_data = [self.embedding_field]
+            if return_embedding is True and self.embedding_field in excluded_meta_data:
+                excluded_meta_data.remove(self.embedding_field)
+            elif return_embedding is False and self.embedding_field not in excluded_meta_data:
+                excluded_meta_data.append(self.embedding_field)
+        elif return_embedding is False:
+            excluded_meta_data = [self.embedding_field]
 
-            if excluded_meta_data:
-                body["_source"] = {"excludes": excluded_meta_data}
+        if excluded_meta_data:
+            body["_source"] = {"excludes": excluded_meta_data}
 
-            logger.debug(f"Retriever query: {body}")
-            try:
-                result = self.client.search(index=index, body=body, request_timeout=300)["hits"]["hits"]
-                if len(result) == 0:
-                    count_embeddings = self.get_embedding_count(index=index)
-                    if count_embeddings == 0:
-                        raise RequestError(400, "search_phase_execution_exception",
-                                           {"error": "No documents with embeddings."})
-            except RequestError as e:
-                if e.error == "search_phase_execution_exception":
-                    error_message: str = "search_phase_execution_exception: Likely some of your stored documents don't have embeddings." \
-                                         " Run the document store's update_embeddings() method."
-                    raise RequestError(e.status_code, error_message, e.info)
-                else:
-                    raise e
+        logger.debug(f"Retriever query: {body}")
+        try:
+            result = self.client.search(index=index, body=body, request_timeout=300)["hits"]["hits"]
+            if len(result) == 0:
+                count_embeddings = self.get_embedding_count(index=index)
+                if count_embeddings == 0:
+                    raise RequestError(400, "search_phase_execution_exception",
+                                       {"error": "No documents with embeddings."})
+        except RequestError as e:
+            if e.error != "search_phase_execution_exception":
+                raise e
 
-            documents = [
-                self._convert_es_hit_to_document(hit, adapt_score_for_embedding=True, return_embedding=return_embedding)
-                for hit in result
-            ]
-            return documents
+            error_message: str = "search_phase_execution_exception: Likely some of your stored documents don't have embeddings." \
+                                 " Run the document store's update_embeddings() method."
+            raise RequestError(e.status_code, error_message, e.info)
+        return [
+            self._convert_es_hit_to_document(
+                hit,
+                adapt_score_for_embedding=True,
+                return_embedding=return_embedding,
+            )
+            for hit in result
+        ]
 
     def _get_vector_similarity_query(self, query_emb: np.ndarray, top_k: int):
         """
@@ -894,7 +891,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                 }
             }
 
-        query = {
+        return {
             "script_score": {
                 "query": script_score_query,
                 "script": {
@@ -904,7 +901,6 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
                 },
             }
         }
-        return query
 
     def _convert_es_hit_to_document(
             self,
@@ -919,7 +915,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         if name:
             meta_data["name"] = name
 
-        score = hit["_score"] if hit["_score"] else None
+        score = hit["_score"] or None
         if score:
             if adapt_score_for_embedding:
                 score = self._scale_embedding_score(score)
@@ -944,9 +940,7 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
             "score": score,
             "embedding": embedding
         }
-        document = Document.from_dict(doc_dict)
-
-        return document
+        return Document.from_dict(doc_dict)
 
     def _scale_embedding_score(self, score):
         return score - 1000
@@ -960,13 +954,12 @@ class ElasticsearchDocumentStore(BaseDocumentStore):
         docs = self.get_all_documents(index)
 
         l = [len(d.content) for d in docs]
-        stats = {"count": len(docs),
+        return {"count": len(docs),
                  "chars_mean": np.mean(l),
                  "chars_max": max(l),
                  "chars_min": min(l),
                  "chars_median": np.median(l),
                  }
-        return stats
 
     def update_embeddings(
         self,
@@ -1160,55 +1153,57 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
 
         if not self.embedding_field:
             raise RuntimeError("Please specify arg `embedding_field` in ElasticsearchDocumentStore()")
-        else:
-            # +1 in similarity to avoid negative numbers (for cosine sim)
-            body = {
-                "size": top_k,
-                "query": {
-                    "bool": {
-                        "must": [
-                            self._get_vector_similarity_query(query_emb, top_k)
-                        ]
-                    }
+        # +1 in similarity to avoid negative numbers (for cosine sim)
+        body = {
+            "size": top_k,
+            "query": {
+                "bool": {
+                    "must": [
+                        self._get_vector_similarity_query(query_emb, top_k)
+                    ]
                 }
             }
-            if filters:
-                filter_clause = []
-                for key, values in filters.items():
-                    if type(values) != list:
-                        raise ValueError(
-                            f'Wrong filter format for key "{key}": Please provide a list of allowed values for each key. '
-                            'Example: {"name": ["some", "more"], "category": ["only_one"]} ')
-                    filter_clause.append(
-                        {
-                            "terms": {key: values}
-                        }
-                    )
-                body["query"]["bool"]["filter"] = filter_clause         # type: ignore
+        }
+        if filters:
+            filter_clause = []
+            for key, values in filters.items():
+                if type(values) != list:
+                    raise ValueError(
+                        f'Wrong filter format for key "{key}": Please provide a list of allowed values for each key. '
+                        'Example: {"name": ["some", "more"], "category": ["only_one"]} ')
+                filter_clause.append(
+                    {
+                        "terms": {key: values}
+                    }
+                )
+            body["query"]["bool"]["filter"] = filter_clause         # type: ignore
 
-            excluded_meta_data: Optional[list] = None
+        excluded_meta_data: Optional[list] = None
 
-            if self.excluded_meta_data:
-                excluded_meta_data = deepcopy(self.excluded_meta_data)
+        if self.excluded_meta_data:
+            excluded_meta_data = deepcopy(self.excluded_meta_data)
 
-                if return_embedding is True and self.embedding_field in excluded_meta_data:
-                    excluded_meta_data.remove(self.embedding_field)
-                elif return_embedding is False and self.embedding_field not in excluded_meta_data:
-                    excluded_meta_data.append(self.embedding_field)
-            elif return_embedding is False:
-                excluded_meta_data = [self.embedding_field]
+            if return_embedding is True and self.embedding_field in excluded_meta_data:
+                excluded_meta_data.remove(self.embedding_field)
+            elif return_embedding is False and self.embedding_field not in excluded_meta_data:
+                excluded_meta_data.append(self.embedding_field)
+        elif return_embedding is False:
+            excluded_meta_data = [self.embedding_field]
 
-            if excluded_meta_data:
-                body["_source"] = {"excludes": excluded_meta_data}
+        if excluded_meta_data:
+            body["_source"] = {"excludes": excluded_meta_data}
 
-            logger.debug(f"Retriever query: {body}")
-            result = self.client.search(index=index, body=body, request_timeout=300)["hits"]["hits"]
+        logger.debug(f"Retriever query: {body}")
+        result = self.client.search(index=index, body=body, request_timeout=300)["hits"]["hits"]
 
-            documents = [
-                self._convert_es_hit_to_document(hit, adapt_score_for_embedding=True, return_embedding=return_embedding)
-                for hit in result
-            ]
-            return documents
+        return [
+            self._convert_es_hit_to_document(
+                hit,
+                adapt_score_for_embedding=True,
+                return_embedding=return_embedding,
+            )
+            for hit in result
+        ]
 
     def _create_document_index(self, index_name: str):
         """
@@ -1251,9 +1246,10 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
                 elif self.similarity == "l2":
                     similarity_space_type = "l2"
 
-                mapping["settings"]["index"] = {}
-                mapping["settings"]["index"]["knn"] = True
-                mapping["settings"]["index"]["knn.space_type"] = similarity_space_type
+                mapping["settings"]["index"] = {
+                    'knn': True,
+                    'knn.space_type': similarity_space_type,
+                }
 
                 mapping["mappings"]["properties"][self.embedding_field] = {
                     "type": "knn_vector",
@@ -1263,8 +1259,7 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
                 if self.index_type == "flat":
                     pass
                 elif self.index_type == "hnsw":
-                    mapping["settings"]["index"]["knn.algo_param"] = {}
-                    mapping["settings"]["index"]["knn.algo_param"]["ef_search"] = 20
+                    mapping["settings"]["index"]["knn.algo_param"] = {'ef_search': 20}
                     mapping["mappings"]["properties"][self.embedding_field]["method"] = {
                         "space_type": similarity_space_type,
                         "name": "hnsw",
@@ -1322,8 +1317,11 @@ class OpenSearchDocumentStore(ElasticsearchDocumentStore):
         """
         Generate Elasticsearch query for vector similarity.
         """
-        query = {"knn": {self.embedding_field: {"vector": query_emb.tolist(), "k": top_k}}}
-        return query
+        return {
+            "knn": {
+                self.embedding_field: {"vector": query_emb.tolist(), "k": top_k}
+            }
+        }
 
     def _scale_embedding_score(self, score):
         return score

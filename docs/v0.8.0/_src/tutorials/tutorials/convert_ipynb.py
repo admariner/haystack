@@ -11,8 +11,7 @@ def atoi(text):
 
 
 def natural_keys(text):
-    test = [ atoi(c) for c in re.split('(\d+)',text) ]
-    return test
+    return [ atoi(c) for c in re.split('(\d+)',text) ]
 
 
 dir = Path("../../../../tutorials")

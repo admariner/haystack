@@ -48,14 +48,13 @@ def pytest_generate_tests(metafunc):
     document_store_type = metafunc.config.option.document_store_type
     selected_doc_stores = [item.strip() for item in document_store_type.split(",")]
 
-    # parametrize document_store fixture if it's in the test function argument list
-    # but does not have an explicit parametrize annotation e.g
-    # @pytest.mark.parametrize("document_store", ["memory"], indirect=False)
-    found_mark_parametrize_document_store = False
-    for marker in metafunc.definition.iter_markers('parametrize'):
-        if 'document_store' in marker.args[0] or 'document_store_with_docs' in marker.args[0] or 'document_store_type' in marker.args[0]:
-            found_mark_parametrize_document_store = True
-            break
+    found_mark_parametrize_document_store = any(
+        'document_store' in marker.args[0]
+        or 'document_store_with_docs' in marker.args[0]
+        or 'document_store_type' in marker.args[0]
+        for marker in metafunc.definition.iter_markers('parametrize')
+    )
+
     # for all others that don't have explicit parametrization, we add the ones from the CLI arg
     if 'document_store' in metafunc.fixturenames and not found_mark_parametrize_document_store:
         metafunc.parametrize("document_store", selected_doc_stores, indirect=True)
@@ -240,11 +239,11 @@ def xpdf_fixture():
         run([commands], shell=True)
 
         verify_installation = run(["pdftotext -v"], shell=True)
-        if verify_installation.returncode == 127:
-            raise Exception(
-                """pdftotext is not installed. It is part of xpdf or poppler-utils software suite.
+    if verify_installation.returncode == 127:
+        raise Exception(
+            """pdftotext is not installed. It is part of xpdf or poppler-utils software suite.
                  You can download for your OS from here: https://www.xpdfreader.com/download.html."""
-            )
+        )
 
 
 @pytest.fixture(scope="module")
@@ -404,15 +403,15 @@ def no_answer_reader(request):
 @pytest.fixture(scope="module")
 def prediction(reader, test_docs_xs):
     docs = [Document.from_dict(d) if isinstance(d, dict) else d for d in test_docs_xs]
-    prediction = reader.predict(query="Who lives in Berlin?", documents=docs, top_k=5)
-    return prediction
+    return reader.predict(query="Who lives in Berlin?", documents=docs, top_k=5)
 
 
 @pytest.fixture(scope="module")
 def no_answer_prediction(no_answer_reader, test_docs_xs):
     docs = [Document.from_dict(d) if isinstance(d, dict) else d for d in test_docs_xs]
-    prediction = no_answer_reader.predict(query="What is the meaning of life?", documents=docs, top_k=5)
-    return prediction
+    return no_answer_reader.predict(
+        query="What is the meaning of life?", documents=docs, top_k=5
+    )
 
 
 @pytest.fixture(params=["es_filter_only", "elasticsearch", "dpr", "embedding", "tfidf", "table_text_retriever"])
@@ -573,7 +572,7 @@ def adaptive_model_qa(num_processes):
 
 @pytest.fixture(scope="module")
 def bert_base_squad2(request):
-    model = QAInferencer.load(
+    return QAInferencer.load(
             "deepset/minilm-uncased-squad2",
             task_type="question_answering",
             batch_size=4,
@@ -581,7 +580,6 @@ def bert_base_squad2(request):
             multithreading_rust=False,
             use_fast=True # TODO parametrize this to test slow as well
     )
-    return model
 
 
 

@@ -85,7 +85,7 @@ class Document:
         """
 
         if content is None:
-            raise ValueError(f"Can't create 'Document': Mandatory 'content' field is None")
+            raise ValueError("Can't create 'Document': Mandatory 'content' field is None")
 
         self.content = content
         self.content_type = content_type
@@ -97,10 +97,7 @@ class Document:
         self.embedding = embedding
 
         # Create a unique ID (either new one, or one from user input)
-        if id:
-            self.id: str = str(id)
-        else:
-            self.id: str = self._get_id(id_hash_keys)
+        self.id: str = str(id) if id else self._get_id(id_hash_keys)
 
     def _get_id(self, id_hash_keys):
         final_hash_key = ":".join(id_hash_keys) if id_hash_keys else str(self.content)
@@ -122,10 +119,12 @@ class Document:
         inv_field_map = {v: k for k, v in field_map.items()}
         _doc: Dict[str, str] = {}
         for k, v in self.__dict__.items():
-            if k == "content":
-                # Convert pd.DataFrame to list of rows for serialization
-                if self.content_type == "table" and isinstance(self.content, pd.DataFrame):
-                    v = [self.content.columns.tolist()] + self.content.values.tolist()
+            if (
+                k == "content"
+                and self.content_type == "table"
+                and isinstance(self.content, pd.DataFrame)
+            ):
+                v = [self.content.columns.tolist()] + self.content.values.tolist()
             k = k if k not in inv_field_map else inv_field_map[k]
             _doc[k] = v
         return _doc
@@ -169,8 +168,7 @@ class Document:
 
     def to_json(self, field_map={}) -> str:
         d = self.to_dict(field_map=field_map)
-        j = json.dumps(d, cls=NumpyEncoder)
-        return j
+        return json.dumps(d, cls=NumpyEncoder)
 
     @classmethod
     def from_json(cls, data: str, field_map={}):
@@ -188,7 +186,7 @@ class Document:
                 getattr(other, 'id_hash_keys', None) == self.id_hash_keys)
 
     def __repr__(self):
-        return f"<Document: {str(self.to_dict())}>"
+        return f'<Document: {self.to_dict()}>'
 
     def __str__(self):
         # In some cases, self.content is None (therefore not subscriptable)
@@ -347,11 +345,7 @@ class Label:
         """
 
         # Create a unique ID (either new one, or one from user input)
-        if id:
-            self.id = str(id)
-        else:
-            self.id = str(uuid4())
-
+        self.id = str(id) if id else str(uuid4())
         if created_at is None:
             created_at = time.strftime("%Y-%m-%d %H:%M:%S")
         self.created_at = created_at
@@ -377,21 +371,16 @@ class Label:
             elif no_answer == False:
                 if self.answer.answer == "":
                     raise ValueError(f"Got no_answer == False while there seems to be no possible Answer: {self.answer}")
+            elif self.answer.answer == "" or self.answer.answer is None:
+                no_answer = True
             else:
-                # Automatically infer no_answer from Answer object
-                if self.answer.answer == "" or self.answer.answer is None:
-                    no_answer = True
-                else:
-                    no_answer = False
+                no_answer = False
         self.no_answer = no_answer
 
         # TODO autofill answer.document_id if Document is provided
 
         self.pipeline_id = pipeline_id
-        if not meta:
-            self.meta = dict()
-        else:
-            self.meta = meta
+        self.meta = dict() if not meta else meta
 
     def to_dict(self):
         return asdict(self)
@@ -509,7 +498,7 @@ class MultiLabel:
         self.document_contents = [l.document.content for l in self.labels if not l.no_answer]
 
     def _aggregate_labels(self, key, must_be_single_value=True) -> List[Any]:
-        unique_values = set([getattr(l, key) for l in self.labels])
+        unique_values = {getattr(l, key) for l in self.labels}
         if must_be_single_value and len(unique_values) > 1:
                 raise ValueError(f"Tried to combine attribute '{key}' of Labels, but found multiple different values: {unique_values}")
         else:
@@ -553,8 +542,7 @@ def _pydantic_dataclass_from_dict(dict: dict, pydantic_dataclass_type) -> Any:
         value = getattr(base_model, base_model_field_name)
         values[base_model_field_name] = value
 
-    dataclass_object = pydantic_dataclass_type(**values)
-    return dataclass_object
+    return pydantic_dataclass_type(**values)
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -797,7 +785,7 @@ class EvaluationResult:
         #simulate top k reader
         if simulated_top_k_reader != -1:
             answers = answers[answers["rank"] <= simulated_top_k_reader]
-        
+
         # simulate top k retriever
         if simulated_top_k_retriever != -1:
             documents = self._get_documents_df()
@@ -812,7 +800,7 @@ class EvaluationResult:
             answers = pd.concat(simulated_answers)
 
         # build metrics df
-        metrics = []        
+        metrics = []
         for query in queries:
             query_df = answers[answers["query"] == query]
             metrics_cols = set(query_df.columns).intersection(["exact_match", "f1", "sas"])
@@ -823,8 +811,7 @@ class EvaluationResult:
             }
             metrics.append(query_metrics)
 
-        metrics_df = pd.DataFrame.from_records(metrics, index=queries)
-        return metrics_df
+        return pd.DataFrame.from_records(metrics, index=queries)
 
     def _get_documents_df(self):
         document_dfs = [node_df for node_df in self.node_results.values() 
@@ -868,14 +855,14 @@ class EvaluationResult:
         """
         if simulated_top_k_retriever != -1:
             documents = documents[documents["rank"] <= simulated_top_k_retriever]
-        
+
         metrics = []
         queries = documents["query"].unique()
         for query in queries:
             query_df = documents[documents["query"] == query]
             gold_ids = query_df["gold_document_ids"].iloc[0]
             retrieved = len(query_df)
-            
+
             relevance_criteria_ids = list(query_df[query_df[doc_relevance_col] == 1]["document_id"].values)
             num_relevants = len(set(gold_ids + relevance_criteria_ids))
             num_retrieved_relevants = query_df[doc_relevance_col].values.sum()
@@ -897,8 +884,7 @@ class EvaluationResult:
                 "mrr": rr
             })
 
-        metrics_df = pd.DataFrame.from_records(metrics, index=queries)
-        return metrics_df
+        return pd.DataFrame.from_records(metrics, index=queries)
 
     def save(self, out_dir: Union[str, Path]):
         """
@@ -924,5 +910,4 @@ class EvaluationResult:
         cols_to_convert = ["gold_document_ids", "gold_document_contents", "gold_answers", "gold_offsets_in_documents"]
         converters = dict.fromkeys(cols_to_convert, ast.literal_eval)
         node_results = {file.stem: pd.read_csv(file, header=0, converters=converters) for file in csv_files}
-        result = cls(node_results)
-        return result
+        return cls(node_results)

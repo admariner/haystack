@@ -37,9 +37,9 @@ def tutorial10_knowledge_graph():
                     'docker start graphdb-instance-tutorial'],
                 shell=True
             )
-            if status.returncode:
-                raise Exception("Failed to launch GraphDB. If you want to connect to an already running GraphDB instance"
-                            "then set LAUNCH_GRAPHDB in the script to False.")
+        if status.returncode:
+            raise Exception("Failed to launch GraphDB. If you want to connect to an already running GraphDB instance"
+                        "then set LAUNCH_GRAPHDB in the script to False.")
         time.sleep(5)
 
     # Initialize a knowledge graph connected to GraphDB and use "tutorial_10_index" as the name of the index

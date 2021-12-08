@@ -156,7 +156,7 @@ class LanguageModel(nn.Module):
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             logger.info(f"Could not find {pretrained_model_name_or_path} locally.")
-            logger.info(f"Looking on Transformers Model Hub (in local cache and online)...")
+            logger.info('Looking on Transformers Model Hub (in local cache and online)...')
             if language_model_class is None:
                 language_model_class = cls.get_language_model_class(pretrained_model_name_or_path, use_auth_token=use_auth_token, **kwargs)
 
@@ -276,8 +276,7 @@ class LanguageModel(nn.Module):
         for odn in OUTPUT_DIM_NAMES:
             if odn in dir(config):
                 return getattr(config, odn)
-        else:
-            raise Exception("Could not infer the output dimensions of the language model")
+        raise Exception("Could not infer the output dimensions of the language model")
 
     def freeze(self, layers):
         """ To be implemented"""
@@ -294,7 +293,10 @@ class LanguageModel(nn.Module):
             setattr(self.model.config, "language", self.language)
             # For DPR models, transformers overwrites the model_type with the one set in DPRConfig
             # Therefore, we copy the model_type from the model config to DPRConfig
-            if self.__class__.__name__ == "DPRQuestionEncoder" or self.__class__.__name__ == "DPRContextEncoder":
+            if self.__class__.__name__ in [
+                "DPRQuestionEncoder",
+                "DPRContextEncoder",
+            ]:
                 setattr(transformers.DPRConfig, "model_type", self.model.config.model_type)
             string = self.model.config.to_json_string()
             file.write(string)
@@ -347,7 +349,7 @@ class LanguageModel(nn.Module):
             logger.info(
                 f"Automatically detected language from language model name: {language}"
             )
-        elif len(matches) == 0:
+        elif not matches:
             language = "english"
         elif len(matches) > 1:
             language = matches[0]
@@ -404,9 +406,7 @@ class LanguageModel(nn.Module):
 
         preds = []
         for vec, sample in zip(vecs, samples):
-            pred = {}
-            pred["context"] = sample.clear_text["text"]
-            pred["vec"] = vec
+            pred = {'context': sample.clear_text["text"], 'vec': vec}
             preds.append(pred)
         return preds
 
@@ -826,7 +826,7 @@ class DistilBert(LanguageModel):
         input_ids: torch.Tensor,
         padding_mask: torch.Tensor,
         **kwargs,
-    ):  
+    ):
         """
         Perform the forward pass of the DistilBERT model.
 
@@ -843,10 +843,10 @@ class DistilBert(LanguageModel):
         pooled_output = self.pooler(output_tuple[0])
         if self.model.config.output_hidden_states == True:
             sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
-            return sequence_output, pooled_output
         else:
             sequence_output = output_tuple[0]
-            return sequence_output, pooled_output
+
+        return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
         self.model.config.output_hidden_states = True
@@ -1044,10 +1044,10 @@ class Electra(LanguageModel):
 
         if self.model.config.output_hidden_states == True:
             sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
-            return sequence_output, pooled_output
         else:
             sequence_output = output_tuple[0]
-            return sequence_output, pooled_output
+
+        return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
         self.model.config.output_hidden_states = True

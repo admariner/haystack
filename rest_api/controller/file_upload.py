@@ -20,14 +20,12 @@ try:
     _, pipeline_config, definitions = Pipeline._read_yaml(
         path=Path(PIPELINE_YAML_PATH), pipeline_name=INDEXING_PIPELINE_NAME, overwrite_with_env_variables=True
     )
-    # Since each instance of FAISSDocumentStore creates an in-memory FAISS index, the Indexing & Query Pipelines would
-    # end up with different indices. The same applies for InMemoryDocumentStore. The check below prevents creation of 
-    # Indexing Pipelines with FAISSDocumentStore or InMemoryDocumentStore.   
-    is_faiss_or_inmemory_present = False
-    for node in pipeline_config["nodes"]:
-        if definitions[node["name"]]["type"] == "FAISSDocumentStore" or definitions[node["name"]]["type"] == "InMemoryDocumentStore":
-            is_faiss_or_inmemory_present = True
-            break
+    is_faiss_or_inmemory_present = any(
+        definitions[node["name"]]["type"]
+        in ["FAISSDocumentStore", "InMemoryDocumentStore"]
+        for node in pipeline_config["nodes"]
+    )
+
     if is_faiss_or_inmemory_present:
         logger.warning("Indexing Pipeline with FAISSDocumentStore or InMemoryDocumentStore is not supported with the REST APIs.")
         INDEXING_PIPELINE = None

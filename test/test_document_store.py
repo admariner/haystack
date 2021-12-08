@@ -271,9 +271,11 @@ def test_document_with_embeddings(document_store):
 
 @pytest.mark.parametrize("retriever", ["embedding"], indirect=True)
 def test_update_embeddings(document_store, retriever):
-    documents = []
-    for i in range(6):
-        documents.append({"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"})
+    documents = [
+        {"content": f"text_{i}", "id": str(i), "meta_field": f"value_{i}"}
+        for i in range(6)
+    ]
+
     documents.append({"content": "text_0", "id": "6", "meta_field": "value_0"})
 
     document_store.write_documents(documents, index="haystack_test_one")
@@ -369,10 +371,18 @@ def test_update_embeddings_table_text_retriever(document_store, retriever):
                           "id": f"pssg_{i}",
                           "meta_field": f"value_text_{i}",
                           "content_type": "text"})
-        documents.append({"content": pd.DataFrame(columns=[f"col_{i}", f"col_{i+1}"], data=[[f"cell_{i}", f"cell_{i+1}"]]),
-                          "id": f"table_{i}",
-                          f"meta_field": f"value_table_{i}",
-                          "content_type": "table"})
+        documents.append(
+            {
+                "content": pd.DataFrame(
+                    columns=[f"col_{i}", f"col_{i+1}"],
+                    data=[[f"cell_{i}", f"cell_{i+1}"]],
+                ),
+                "id": f"table_{i}",
+                'meta_field': f"value_table_{i}",
+                "content_type": "table",
+            }
+        )
+
     documents.append({"content": "text_0",
                       "id": "pssg_4",
                       "meta_field": "value_text_0",
@@ -692,7 +702,7 @@ def test_multilabel(document_store):
     multi_labels = document_store.get_all_labels_aggregated(index="haystack_test_multilabel",
                                                             open_domain=False, drop_negative_labels=True)
     assert len(multi_labels) == 3
-    label_counts = set([len(ml.labels) for ml in multi_labels])
+    label_counts = {len(ml.labels) for ml in multi_labels}
     assert label_counts == set([2,1,1])
 
     assert len(multi_labels[0].answers) == len(multi_labels[0].document_ids)

@@ -133,14 +133,13 @@ class Crawler(BaseComponent):
             # don't go beyond the initial list of urls
             if crawler_depth == 0:
                 file_paths += self._write_to_files(urls, output_dir=output_dir)
-            # follow one level of sublinks
             elif crawler_depth == 1:
                 for url_ in urls:
                     existed_links: List = list(sum(list(sub_links.values()), []))
                     sub_links[url_] = list(self._extract_sublinks_from_url(base_url=url_, filter_urls=filter_urls,
                                                                      existed_links=existed_links))
-                for url in sub_links:
-                    file_paths += self._write_to_files(sub_links[url], output_dir=output_dir, base_url=url)
+                for url, value in sub_links.items():
+                    file_paths += self._write_to_files(value, output_dir=output_dir, base_url=url)
 
         return file_paths
 
@@ -156,8 +155,7 @@ class Crawler(BaseComponent):
             file_name = f"{'_'.join(link_split_values)}.json"
             file_path = output_dir / file_name
 
-            data = {}
-            data['meta'] = {'url': link}
+            data = {'meta': {'url': link}}
             if base_url:
                 data['meta']['base_url'] = base_url
             data['content'] = text
@@ -223,20 +221,28 @@ class Crawler(BaseComponent):
         self.driver.get(base_url)
         a_elements = self.driver.find_elements_by_tag_name('a')
         sub_links = set()
-        if not (existed_links and base_url in existed_links):
-            if filter_urls:
-                if re.compile('|'.join(filter_urls)).search(base_url):
-                    sub_links.add(base_url)
+        if (
+            not (existed_links and base_url in existed_links)
+            and filter_urls
+            and re.compile('|'.join(filter_urls)).search(base_url)
+        ):
+            sub_links.add(base_url)
 
         for i in a_elements:
             sub_link = i.get_attribute('href')
-            if not (existed_links and sub_link in existed_links):
-                if self._is_internal_url(base_url=base_url, sub_link=sub_link) \
-                        and (not self._is_inpage_navigation(base_url=base_url, sub_link=sub_link)):
-                    if filter_urls:
-                        if re.compile('|'.join(filter_urls)).search(sub_link):
-                            sub_links.add(sub_link)
-                    else:
+            if (
+                not (existed_links and sub_link in existed_links)
+                and self._is_internal_url(base_url=base_url, sub_link=sub_link)
+                and (
+                    not self._is_inpage_navigation(
+                        base_url=base_url, sub_link=sub_link
+                    )
+                )
+            ):
+                if filter_urls:
+                    if re.compile('|'.join(filter_urls)).search(sub_link):
                         sub_links.add(sub_link)
+                else:
+                    sub_links.add(sub_link)
 
         return sub_links

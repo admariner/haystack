@@ -93,8 +93,7 @@ class GraphDBKnowledgeGraph(BaseKnowledgeGraph):
         :return: all triples stored in the index
         """
         sparql_query = "SELECT * WHERE { ?s ?p ?o. }"
-        results = self.query(sparql_query=sparql_query, index=index)
-        return results
+        return self.query(sparql_query=sparql_query, index=index)
 
     def get_all_subjects(self, index: Optional[str] = None):
         """
@@ -104,8 +103,7 @@ class GraphDBKnowledgeGraph(BaseKnowledgeGraph):
         :return: all subjects stored in the index
         """ 
         sparql_query = "SELECT ?s WHERE { ?s ?p ?o. }"
-        results = self.query(sparql_query=sparql_query, index=index)
-        return results
+        return self.query(sparql_query=sparql_query, index=index)
 
     def get_all_predicates(self, index: Optional[str] = None):
         """
@@ -115,8 +113,7 @@ class GraphDBKnowledgeGraph(BaseKnowledgeGraph):
         :return: all predicates stored in the index
         """
         sparql_query = "SELECT ?p WHERE { ?s ?p ?o. }"
-        results = self.query(sparql_query=sparql_query, index=index)
-        return results
+        return self.query(sparql_query=sparql_query, index=index)
 
     def get_all_objects(self, index: Optional[str] = None):
         """
@@ -126,8 +123,7 @@ class GraphDBKnowledgeGraph(BaseKnowledgeGraph):
         :return: all objects stored in the index
         """
         sparql_query = "SELECT ?o WHERE { ?s ?p ?o. }"
-        results = self.query(sparql_query=sparql_query, index=index)
-        return results
+        return self.query(sparql_query=sparql_query, index=index)
 
     def query(self, sparql_query: str, index: Optional[str] = None):
         """

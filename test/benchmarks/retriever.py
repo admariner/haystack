@@ -284,7 +284,7 @@ def prepare_data(data_dir, filename_gold, filename_negative, remote_url, embeddi
     labels = [x for x in labels if x.document_id in doc_ids]
 
     # Filter labels down to n_queries
-    selected_queries = list(set(f"{x.document_id} | {x.query}" for x in labels))
+    selected_queries = list({f"{x.document_id} | {x.query}" for x in labels})
     selected_queries = selected_queries[:n_queries]
     labels = [x for x in labels if f"{x.document_id} | {x.query}" in selected_queries]
 
@@ -301,11 +301,8 @@ def prepare_negative_passages(data_dir, filename_negative, n_docs):
     if n_docs == 0:
         return []
     with open(data_dir + filename_negative) as f:
-        lines = []
         _ = f.readline() # Skip column titles line
-        for _ in range(n_docs):
-            lines.append(f.readline()[:-1])
-
+        lines = [f.readline()[:-1] for _ in range(n_docs)]
     docs = []
     for l in lines[:n_docs]:
         id, text, title = l.split("\t")

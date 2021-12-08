@@ -112,7 +112,7 @@ class _SentenceTransformersEmbeddingEncoder(_BaseEmbeddingEncoder):
         # texts can be a list of strings or a list of [title, text]
         # get back list of numpy embedding vectors
         emb = self.embedding_model.encode(texts, batch_size=self.batch_size, show_progress_bar=self.show_progress_bar)
-        emb = [r for r in emb]
+        emb = list(emb)
         return emb
 
     def embed_queries(self, texts: List[str]) -> List[np.ndarray]:
@@ -145,7 +145,7 @@ class _RetribertEmbeddingEncoder(_BaseEmbeddingEncoder):
         embeddings: List[np.ndarray] = []
         disable_tqdm = True if len(dataloader) == 1 else not self.progress_bar
 
-        for i, batch in enumerate(tqdm(dataloader, desc=f"Creating Embeddings", unit=" Batches", disable=disable_tqdm)):
+        for batch in tqdm(dataloader, desc='Creating Embeddings', unit=" Batches", disable=disable_tqdm):
             batch = {key: batch[key].to(self.embedding_model.device) for key in batch}
             with torch.no_grad():
                 q_reps = self.embedding_model.embed_questions(input_ids=batch["input_ids"],
@@ -162,7 +162,7 @@ class _RetribertEmbeddingEncoder(_BaseEmbeddingEncoder):
         embeddings: List[np.ndarray] = []
         disable_tqdm = True if len(dataloader) == 1 else not self.progress_bar
 
-        for i, batch in enumerate(tqdm(dataloader, desc=f"Creating Embeddings", unit=" Batches", disable=disable_tqdm)):
+        for batch in tqdm(dataloader, desc='Creating Embeddings', unit=" Batches", disable=disable_tqdm):
             batch = {key: batch[key].to(self.embedding_model.device) for key in batch}
             with torch.no_grad():
                 q_reps = self.embedding_model.embed_answers(input_ids=batch["input_ids"],
@@ -174,9 +174,12 @@ class _RetribertEmbeddingEncoder(_BaseEmbeddingEncoder):
     def _create_dataloader(self, text_to_encode: List[dict]) -> NamedDataLoader:
 
         dataset, tensor_names = self.dataset_from_dicts(text_to_encode)
-        dataloader = NamedDataLoader(dataset=dataset, sampler=SequentialSampler(dataset),
-                                     batch_size=self.batch_size, tensor_names=tensor_names)
-        return dataloader
+        return NamedDataLoader(
+            dataset=dataset,
+            sampler=SequentialSampler(dataset),
+            batch_size=self.batch_size,
+            tensor_names=tensor_names,
+        )
 
     def dataset_from_dicts(self, dicts: List[dict]):
         texts = [x["text"] for x in dicts]

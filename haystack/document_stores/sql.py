@@ -140,8 +140,7 @@ class SQLDocumentStore(BaseDocumentStore):
     def get_document_by_id(self, id: str, index: Optional[str] = None) -> Optional[Document]:
         """Fetch a document by specifying its text id string"""
         documents = self.get_documents_by_id([id], index)
-        document = documents[0] if documents else None
-        return document
+        return documents[0] if documents else None
 
     def get_documents_by_id(self, ids: List[str], index: Optional[str] = None, batch_size: int = 10_000) -> List[Document]:
         """Fetch documents by specifying a list of text id strings"""
@@ -171,8 +170,9 @@ class SQLDocumentStore(BaseDocumentStore):
             for row in query.all():
                 documents.append(self._convert_sql_row_to_document(row))
 
-        sorted_documents = sorted(documents, key=lambda doc: vector_ids.index(doc.meta["vector_id"]))
-        return sorted_documents
+        return sorted(
+            documents, key=lambda doc: vector_ids.index(doc.meta["vector_id"])
+        )
 
     def get_all_documents(
         self,
@@ -180,8 +180,11 @@ class SQLDocumentStore(BaseDocumentStore):
         filters: Optional[Dict[str, List[str]]] = None,
         return_embedding: Optional[bool] = None,
     ) -> List[Document]:
-        documents = list(self.get_all_documents_generator(index=index, filters=filters, return_embedding=return_embedding))
-        return documents
+        return list(
+            self.get_all_documents_generator(
+                index=index, filters=filters, return_embedding=return_embedding
+            )
+        )
 
     def get_all_documents_generator(
         self,
@@ -292,9 +295,7 @@ class SQLDocumentStore(BaseDocumentStore):
         index = index or self.label_index
         # TODO: Use batch_size
         label_rows = self.session.query(LabelORM).filter_by(index=index).all()
-        labels = [self._convert_sql_row_to_label(row) for row in label_rows]
-
-        return labels
+        return [self._convert_sql_row_to_label(row) for row in label_rows]
 
     def write_documents(self, documents: Union[List[dict], List[Document]], index: Optional[str] = None,
                         batch_size: int = 10_000, duplicate_documents: Optional[str] = None) -> None:
@@ -360,7 +361,7 @@ class SQLDocumentStore(BaseDocumentStore):
         index = index or self.label_index
 
         duplicate_ids: list = [label.id for label in self._get_duplicate_labels(labels, index=index)]
-        if len(duplicate_ids) > 0:
+        if duplicate_ids:
             logger.warning(f"Duplicate Label IDs: Inserting a Label whose id already exists in this document store."
                            f" This will overwrite the old Label. Please make sure Label.id is a unique identifier of"
                            f" the answer annotation and not the question."
@@ -458,8 +459,7 @@ class SQLDocumentStore(BaseDocumentStore):
                         MetaDocumentORM.value.in_(values),
                     )
 
-        count = query.count()
-        return count
+        return query.count()
 
     def get_label_count(self, index: Optional[str] = None) -> int:
         """
@@ -482,9 +482,7 @@ class SQLDocumentStore(BaseDocumentStore):
         return document
 
     def _convert_sql_row_to_label(self, row) -> Label:
-        # doc = self._convert_sql_row_to_document(row.document)
-
-        label = Label(
+        return Label(
             query=row.query,
             answer=Answer.from_json(row.answer), #type: ignore
             document=Document.from_json(row.document),
@@ -498,7 +496,6 @@ class SQLDocumentStore(BaseDocumentStore):
             updated_at=row.updated_at,
             meta=row.meta
         )
-        return label
         
     def query_by_embedding(self,
                            query_emb: np.ndarray,
@@ -595,17 +592,15 @@ class SQLDocumentStore(BaseDocumentStore):
 
     def _get_or_create(self, session, model, **kwargs):
         instance = session.query(model).filter_by(**kwargs).first()
-        if instance:
-            return instance
-        else:
+        if not instance:
             instance = model(**kwargs)
             session.add(instance)
             session.commit()
-            return instance
+        return instance
 
     def chunked_dict(self, dictionary, size):
         it = iter(dictionary)
-        for i in range(0, len(dictionary), size):
+        for _ in range(0, len(dictionary), size):
             yield {k: dictionary[k] for k in itertools.islice(it, size)}
 
     def _column_windows(self, session, column, windowsize):
@@ -653,5 +648,4 @@ class SQLDocumentStore(BaseDocumentStore):
         for whereclause in self._column_windows(
                 q.session,
                 column, windowsize):
-            for row in q.filter(whereclause).order_by(column):
-                yield row
+            yield from q.filter(whereclause).order_by(column)

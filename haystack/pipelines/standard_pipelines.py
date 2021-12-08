@@ -51,8 +51,7 @@ class BaseStandardPipeline(ABC):
 
         :param name: The name of the node.
         """
-        component = self.pipeline.get_node(name)
-        return component
+        return self.pipeline.get_node(name)
 
     def set_node(self, name: str, component):
         """
@@ -154,7 +153,7 @@ class BaseStandardPipeline(ABC):
             labels: List[MultiLabel],
             params: Optional[dict],
             sas_model_name_or_path: str = None) -> EvaluationResult:
-            
+
         """
         Evaluates the pipeline by running the pipeline once per query in debug mode 
         and putting together all data that is needed for evaluation, e.g. calculating metrics.
@@ -165,9 +164,8 @@ class BaseStandardPipeline(ABC):
         :param sas_model_name_or_path: SentenceTransformers semantic textual similarity model to be used for sas value calculation, 
                                     should be path or string pointing to downloadable models.
         """
-        output = self.pipeline.eval(labels=labels, params=params, 
+        return self.pipeline.eval(labels=labels, params=params, 
             sas_model_name_or_path=sas_model_name_or_path)
-        return output
 
     def print_eval_report(
         self, 
@@ -210,8 +208,7 @@ class ExtractiveQAPipeline(BaseStandardPipeline):
                       All debug information can then be found in the dict returned
                       by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class DocumentSearchPipeline(BaseStandardPipeline):
@@ -238,8 +235,7 @@ class DocumentSearchPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class GenerativeQAPipeline(BaseStandardPipeline):
@@ -269,8 +265,7 @@ class GenerativeQAPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class SearchSummarizationPipeline(BaseStandardPipeline):
@@ -353,8 +348,7 @@ class FAQPipeline(BaseStandardPipeline):
               All debug information can then be found in the dict returned
               by this method under the key "_debug"
         """
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class TranslationWrapperPipeline(BaseStandardPipeline):
@@ -397,8 +391,7 @@ class TranslationWrapperPipeline(BaseStandardPipeline):
         self.pipeline.add_node(component=output_translator, name="OutputTranslator", inputs=previous_node_name)
 
     def run(self, **kwargs):
-        output = self.pipeline.run(**kwargs)
-        return output
+        return self.pipeline.run(**kwargs)
 
 
 class QuestionGenerationPipeline(BaseStandardPipeline):
@@ -414,8 +407,7 @@ class QuestionGenerationPipeline(BaseStandardPipeline):
             documents,
             params: Optional[dict] = None,
             debug: Optional[bool] = None):
-        output = self.pipeline.run(documents=documents, params=params, debug=debug)
-        return output
+        return self.pipeline.run(documents=documents, params=params, debug=debug)
 
 
 class RetrieverQuestionGenerationPipeline(BaseStandardPipeline):
@@ -432,8 +424,7 @@ class RetrieverQuestionGenerationPipeline(BaseStandardPipeline):
             query: str,
             params: Optional[dict] = None,
             debug: Optional[bool] = None):
-        output = self.pipeline.run(query=query, params=params, debug=debug)
-        return output
+        return self.pipeline.run(query=query, params=params, debug=debug)
 
 
 class QuestionAnswerGenerationPipeline(BaseStandardPipeline):
@@ -456,9 +447,7 @@ class QuestionAnswerGenerationPipeline(BaseStandardPipeline):
             output, output_stream = fn(*args, **kwargs)
             questions = output["generated_questions"][0]["questions"]
             documents = output["documents"]
-            query_doc_list = []
-            for q in questions:
-                query_doc_list.append({"queries": q, "docs": documents})
+            query_doc_list = [{"queries": q, "docs": documents} for q in questions]
             kwargs["query_doc_list"] = query_doc_list
             return kwargs, output_stream
         return wrapper
@@ -467,8 +456,7 @@ class QuestionAnswerGenerationPipeline(BaseStandardPipeline):
             documents: List[Document], # type: ignore
             params: Optional[dict] = None,
             debug: Optional[bool] = None):
-        output = self.pipeline.run(documents=documents, params=params, debug=debug)
-        return output
+        return self.pipeline.run(documents=documents, params=params, debug=debug)
 
 
 class MostSimilarDocumentsPipeline(BaseStandardPipeline):
@@ -486,13 +474,16 @@ class MostSimilarDocumentsPipeline(BaseStandardPipeline):
         :param document_ids: document ids
         :param top_k: How many documents id to return against single document
         """
-        similar_documents: list = []
         self.document_store.return_embedding = True  # type: ignore
 
-        for document in self.document_store.get_documents_by_id(ids=document_ids):
-            similar_documents.append(self.document_store.query_by_embedding(query_emb=document.embedding,
-                                                                            return_embedding=False,
-                                                                            top_k=top_k))
+        similar_documents: list = [
+            self.document_store.query_by_embedding(
+                query_emb=document.embedding, return_embedding=False, top_k=top_k
+            )
+            for document in self.document_store.get_documents_by_id(
+                ids=document_ids
+            )
+        ]
 
         self.document_store.return_embedding = False  # type: ignore
         return similar_documents
