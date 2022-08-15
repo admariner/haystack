@@ -1,10 +1,13 @@
 <p align="center">
-  <a href="https://www.deepset.ai/haystack/"><img src="https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/_src/img/haystack_logo_colored.png" alt="Haystack"></a>
+  <a href="https://www.deepset.ai/haystack/"><img src="https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/img/haystack_logo_colored.png" alt="Haystack"></a>
 </p>
 
 <p>
-    <a href="https://github.com/deepset-ai/haystack/actions">
-        <img alt="Build" src="https://github.com/deepset-ai/haystack/workflows/Build/badge.svg?branch=master">
+    <a href="https://github.com/deepset-ai/haystack/actions/workflows/tests.yml">
+        <img alt="Tests" src="https://github.com/deepset-ai/haystack/workflows/Tests/badge.svg?branch=master">
+    </a>
+    <a href="https://github.com/deepset-ai/haystack/actions/workflows/tutorials_nightly.yml">
+        <img alt="Tutorials" src="https://github.com/deepset-ai/haystack/actions/workflows/tutorials_nightly.yml/badge.svg">
     </a>
     <a href="https://haystack.deepset.ai/overview/intro">
         <img alt="Documentation" src="https://img.shields.io/website/http/haystack.deepset.ai/docs/intromd.svg?down_color=red&down_message=offline&up_message=online">
@@ -30,7 +33,7 @@ Haystack is an end-to-end framework that enables you to build powerful and produ
 Whether you want to perform Question Answering or semantic document search, you can use the State-of-the-Art NLP models in Haystack to provide unique search experiences and allow your users to query in natural language.
 Haystack is built in a modular fashion so that you can combine the best technology from other open-source projects like Huggingface's Transformers, Elasticsearch, or Milvus.
 
-<p align="center"><img src="https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/_src/img/main_example.gif"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/img/main_example.gif"></p>
 
 ## What to build with Haystack
 
@@ -59,7 +62,7 @@ Haystack is built in a modular fashion so that you can combine the best technolo
 | :floppy_disk: [Installation](https://github.com/deepset-ai/haystack#floppy_disk-installation) | How to install Haystack |
 | :mortar_board: [Tutorials](https://github.com/deepset-ai/haystack#mortar_board-tutorials) | See what Haystack can do with our Notebooks & Scripts |
 | :beginner: [Quick Demo](https://github.com/deepset-ai/haystack#beginner-quick-demo) | Deploy a Haystack application with Docker Compose and a REST API |
-| :vulcan_salute: [Community](https://github.com/deepset-ai/haystack#vulcan_salute-community) | [Slack](https://haystack.deepset.ai/community/join), [Twitter](https://twitter.com/deepset_ai), [Stack Overflow](https://stackoverflow.com/questions/tagged/haystack), [GitHub Discussions](https://github.com/deepset-ai/haystack/discussions) |
+| :vulcan_salute: [Community](https://github.com/deepset-ai/haystack#vulcan_salute-community) | [Discord](https://haystack.deepset.ai/community/join), [Twitter](https://twitter.com/deepset_ai), [Stack Overflow](https://stackoverflow.com/questions/tagged/haystack), [GitHub Discussions](https://github.com/deepset-ai/haystack/discussions) |
 | :heart: [Contributing](https://github.com/deepset-ai/haystack#heart-contributing) | We welcome all contributions! |
 | :bar_chart: [Benchmarks](https://haystack.deepset.ai/benchmarks/latest) | Speed & Accuracy of Retriever, Readers and DocumentStores |
 | :telescope: [Roadmap](https://haystack.deepset.ai/overview/roadmap) | Public roadmap of Haystack |
@@ -69,41 +72,70 @@ Haystack is built in a modular fashion so that you can combine the best technolo
 
 ## :floppy_disk: Installation
 
-If you're interested in learning more about Haystack and using it as part of your application, we offer several options.
+**1. Basic Installation**
 
-**1. Installing from a package**
-
-You can install Haystack by using [pip](https://github.com/pypa/pip).
+You can install a basic version of Haystack's latest release by using [pip](https://github.com/pypa/pip).
 
 ```
     pip3 install farm-haystack
 ```
 
-Please check our page [on PyPi](https://pypi.org/project/farm-haystack/) for more information.
+This command will install everything needed for basic Pipelines that use an Elasticsearch Document Store.
 
-**2. Installing from GitHub**
+**2. Full Installation**
 
-You can also clone it from GitHub — in case you'd like to work with the master branch and check the latest features:
+If you plan to be using more advanced features like Milvus, FAISS, Weaviate, OCR or Ray,
+you will need to install a full version of Haystack.
+The following command will install the latest version of Haystack from the master branch.
 
 ```
-    git clone https://github.com/deepset-ai/haystack.git
-    cd haystack
-    pip install --editable .
+git clone https://github.com/deepset-ai/haystack.git
+cd haystack
+pip install --upgrade pip
+pip install -e '.[all]' ## or 'all-gpu' for the GPU-enabled dependencies
 ```
 
-To update your installation, do a ``git pull``. The ``--editable`` flag will update changes immediately.
+If you cannot upgrade `pip` to version 21.3 or higher, you will need to replace:
+- `'.[all]'` with `'.[sql,only-faiss,only-milvus1,weaviate,graphdb,crawler,preprocessing,ocr,onnx,ray,dev]'`
+- `'.[all-gpu]'` with `'.[sql,only-faiss-gpu,only-milvus1,weaviate,graphdb,crawler,preprocessing,ocr,onnx-gpu,ray,dev]'`
+
+For an complete list of the dependency groups available, have a look at the `haystack/setup.cfg` file.
+
+To install the REST API and UI, run the following from the root directory of the Haystack repo
+
+```
+pip install rest_api/
+pip install ui/
+```
 
 **3. Installing on Windows**
 
-On Windows, you might need:
+```
+pip install farm-haystack -f https://download.pytorch.org/whl/torch_stable.html
+```
+
+**4. Installing on Apple Silicon (M1)**
+
+M1 Macbooks require some extra dependencies in order to install Haystack.
 
 ```
-    pip install farm-haystack -f https://download.pytorch.org/whl/torch_stable.html
+# some additional dependencies needed on m1 mac
+brew install postgresql
+brew install cmake
+brew install rust
+
+# haystack installation
+GRPC_PYTHON_BUILD_SYSTEM_ZLIB=true pip install git+https://github.com/deepset-ai/haystack.git
 ```
+
+**5. Learn More**
+
+See our [installation guide](https://haystack.deepset.ai/overview/get-started) for more options. 
+You can find out more about our PyPi package on our [PyPi page](https://pypi.org/project/farm-haystack/). 
 
 ## :mortar_board: Tutorials
 
-![image](https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/_src/img/concepts_haystack_handdrawn.png)
+![image](https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/img/concepts_haystack_handdrawn.png)
 
 Follow our [introductory tutorial](https://haystack.deepset.ai/tutorials/first-qa-system) 
 to setup a question answering system using Python and start performing queries! 
@@ -194,6 +226,25 @@ Explore the rest of our tutorials to learn how to tweak pipelines, train models 
     [Colab](https://colab.research.google.com/github/deepset-ai/haystack/blob/master/tutorials/Tutorial15_TableQA.ipynb)
     |
     [Python](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial15_TableQA.py)
+- Tutorial 16 - Document Classification at Indexing Time:
+    [Jupyter noteboook](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial16_Document_Classifier_at_Index_Time.ipynb)
+    |
+    [Colab](https://colab.research.google.com/github/deepset-ai/haystack/blob/master/tutorials/Tutorial16_Document_Classifier_at_Index_Time.ipynb)
+    |
+    [Python](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial16_Document_Classifier_at_Index_Time.py)
+- Tutorial 17 - Answers & Documents to Speech:
+    [Jupyter noteboook](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial17_Audio.ipynb)
+    |
+    [Colab](https://colab.research.google.com/github/deepset-ai/haystack/blob/master/tutorials/Tutorial17_Audio.ipynb)
+    |
+    [Python](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial17_Audio.py)
+- Tutorial 18 - Generative Pseudo Labeling:
+    [Jupyter noteboook](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial18_GPL.ipynb)
+    |
+    [Colab](https://colab.research.google.com/github/deepset-ai/haystack/blob/master/tutorials/Tutorial18_GPL.ipynb)
+    |
+    [Python](https://github.com/deepset-ai/haystack/blob/master/tutorials/Tutorial18_GPL.py)
+
 
 ## :beginner: Quick Demo
 
@@ -248,7 +299,7 @@ haystack-api_1   | [2021-01-01 10:21:58 +0000] [17] [INFO] Application startup c
 
 You should see the following:
 
-![image](https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/_src/img/streamlit_ui_screenshot.png)
+![image](https://raw.githubusercontent.com/deepset-ai/haystack/master/docs/img/streamlit_ui_screenshot.png)
 
 You can then try different queries against a pre-defined set of indexed articles related to Game of Thrones.
 
@@ -268,7 +319,7 @@ There is a very vibrant and active community around Haystack which we are regula
 If you have a feature request or a bug report, feel free to open an [issue in Github](https://github.com/deepset-ai/haystack/issues).
 We regularly check these and you can expect a quick response.
 If you'd like to discuss a topic, or get more general advice on how to make Haystack work for your project, 
-you can start a thread in [Github Discussions](https://github.com/deepset-ai/haystack/discussions) or our [Slack channel](https://haystack.deepset.ai/community/join).
+you can start a thread in [Github Discussions](https://github.com/deepset-ai/haystack/discussions) or our [Discord channel](https://haystack.deepset.ai/community/join).
 We also check [Twitter](https://twitter.com/deepset_ai) and [Stack Overflow](https://stackoverflow.com/questions/tagged/haystack).
 
 
@@ -284,3 +335,17 @@ Thanks so much to all those who have contributed to our project!
 <a href="https://github.com/deepset-ai/haystack/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=deepset-ai/haystack" />
 </a>
+
+
+## Who uses Haystack
+
+Here's a list of organizations who use Haystack. Don't hesitate to send a PR to let the world know that you use Haystack. Join our growing community!
+
+- [Airbus](https://www.airbus.com/en)
+- [Alcatel-Lucent](https://www.al-enterprise.com/)
+- [BetterUp](https://www.betterup.com/)
+- [Deepset](https://deepset.ai/)
+- [Etalab](https://www.etalab.gouv.fr/)
+- [Infineon](https://www.infineon.com/)
+- [Sooth.ai](https://sooth.ai/)
+

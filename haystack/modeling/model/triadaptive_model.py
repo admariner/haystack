@@ -7,15 +7,16 @@ import torch
 from torch import nn
 
 from haystack.modeling.data_handler.processor import Processor
-from haystack.modeling.model.language_model import LanguageModel
+from haystack.modeling.model.language_model import get_language_model, LanguageModel
 from haystack.modeling.model.prediction_head import PredictionHead
-from haystack.modeling.logger import MLFlowLogger as MlLogger
+from haystack.utils.experiment_tracking import Tracker as tracker
 
 logger = logging.getLogger(__name__)
 
 
-def loss_per_head_sum(loss_per_head: List[torch.Tensor], global_step: Optional[int] = None,
-                      batch: Optional[Dict] = None):
+def loss_per_head_sum(
+    loss_per_head: List[torch.Tensor], global_step: Optional[int] = None, batch: Optional[Dict] = None
+):
     """
     Input: loss_per_head (list of tensors), global_step (int), batch (dict)
     Output: aggregated loss (tensor)
@@ -24,7 +25,7 @@ def loss_per_head_sum(loss_per_head: List[torch.Tensor], global_step: Optional[i
 
 
 class TriAdaptiveModel(nn.Module):
-    """ PyTorch implementation containing all the modelling needed for
+    """PyTorch implementation containing all the modelling needed for
     your NLP task. Combines 3 language models for representation of 3
     sequences and a prediction head. Allows for gradient flow back to
     the 3 language model components.
@@ -36,17 +37,17 @@ class TriAdaptiveModel(nn.Module):
     """
 
     def __init__(
-            self,
-            language_model1: LanguageModel,
-            language_model2: LanguageModel,
-            language_model3: LanguageModel,
-            prediction_heads: List[PredictionHead],
-            embeds_dropout_prob: float = 0.1,
-            device: str = "cuda",
-            lm1_output_types: Union[str, List[str]] = ["per_sequence"],
-            lm2_output_types: Union[str, List[str]] = ["per_sequence"],
-            lm3_output_types: Union[str, List[str]] = ["per_sequence"],
-            loss_aggregation_fn: Optional[Callable] = None,
+        self,
+        language_model1: LanguageModel,
+        language_model2: LanguageModel,
+        language_model3: LanguageModel,
+        prediction_heads: List[PredictionHead],
+        embeds_dropout_prob: float = 0.1,
+        device: torch.device = torch.device("cuda"),
+        lm1_output_types: Union[str, List[str]] = ["per_sequence"],
+        lm2_output_types: Union[str, List[str]] = ["per_sequence"],
+        lm3_output_types: Union[str, List[str]] = ["per_sequence"],
+        loss_aggregation_fn: Optional[Callable] = None,
     ):
         """
         :param language_model1: Any model that turns token ids into vector representations.
@@ -70,7 +71,7 @@ class TriAdaptiveModel(nn.Module):
                                 "per_sequence", a single embedding will be extracted to represent the full
                                 input sequence. Can either be a single string, or a list of strings,
                                 one for each prediction head.
-        :param device: The device on which this model will operate. Either "cpu" or "cuda".
+        :param device: The device on which this model will operate. Either torch.device("cpu") or torch.device("cuda").
         :param loss_aggregation_fn: Function to aggregate the loss of multiple prediction heads.
                                     Input: loss_per_head (list of tensors), global_step (int), batch (dict)
                                     Output: aggregated loss (tensor)
@@ -86,24 +87,18 @@ class TriAdaptiveModel(nn.Module):
         super(TriAdaptiveModel, self).__init__()
         self.device = device
         self.language_model1 = language_model1.to(device)
-        self.lm1_output_dims = language_model1.get_output_dims()
+        self.lm1_output_dims = language_model1.output_dims
         self.language_model2 = language_model2.to(device)
-        self.lm2_output_dims = language_model2.get_output_dims()
+        self.lm2_output_dims = language_model2.output_dims
         self.language_model3 = language_model3.to(device)
-        self.lm3_output_dims = language_model3.get_output_dims()
+        self.lm3_output_dims = language_model3.output_dims
         self.dropout1 = nn.Dropout(embeds_dropout_prob)
         self.dropout2 = nn.Dropout(embeds_dropout_prob)
         self.dropout3 = nn.Dropout(embeds_dropout_prob)
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
-        self.lm1_output_types = (
-            [lm1_output_types] if isinstance(lm1_output_types, str) else lm1_output_types
-        )
-        self.lm2_output_types = (
-            [lm2_output_types] if isinstance(lm2_output_types, str) else lm2_output_types
-        )
-        self.lm3_output_types = (
-            [lm3_output_types] if isinstance(lm3_output_types, str) else lm3_output_types
-        )
+        self.lm1_output_types = [lm1_output_types] if isinstance(lm1_output_types, str) else lm1_output_types
+        self.lm2_output_types = [lm2_output_types] if isinstance(lm2_output_types, str) else lm2_output_types
+        self.lm3_output_types = [lm3_output_types] if isinstance(lm3_output_types, str) else lm3_output_types
         self.log_params()
         # default loss aggregation function is a simple sum (without using any of the optional params)
         if not loss_aggregation_fn:
@@ -131,8 +126,16 @@ class TriAdaptiveModel(nn.Module):
             ph.save(save_dir, i)
 
     @classmethod
-    def load(cls, load_dir: Path, device: str, strict: bool = False, lm1_name: str = "lm1", lm2_name: str = "lm2",
-             lm3_name: str = "lm3", processor: Optional[Processor] = None):
+    def load(
+        cls,
+        load_dir: Path,
+        device: torch.device,
+        strict: bool = False,
+        lm1_name: str = "lm1",
+        lm2_name: str = "lm2",
+        lm3_name: str = "lm3",
+        processor: Optional[Processor] = None,
+    ):
         """
         Loads a TriAdaptiveModel from a directory. The directory must contain:
 
@@ -152,7 +155,7 @@ class TriAdaptiveModel(nn.Module):
         * special_tokens_map.json
 
         :param load_dir: Location where the TriAdaptiveModel is stored.
-        :param device: To which device we want to sent the model, either cpu or cuda.
+        :param device: To which device we want to sent the model, either torch.device("cpu") or torch.device("cuda").
         :param lm1_name: The name to assign to the first loaded language model (for encoding queries).
         :param lm2_name: The name to assign to the second loaded language model (for encoding context/passages).
         :param lm3_name: The name to assign to the second loaded language model (for encoding tables).
@@ -162,17 +165,17 @@ class TriAdaptiveModel(nn.Module):
         """
         # Language Model
         if lm1_name:
-            language_model1 = LanguageModel.load(os.path.join(load_dir, lm1_name))
+            language_model1 = get_language_model(os.path.join(load_dir, lm1_name))
         else:
-            language_model1 = LanguageModel.load(load_dir)
+            language_model1 = get_language_model(load_dir)
         if lm2_name:
-            language_model2 = LanguageModel.load(os.path.join(load_dir, lm2_name))
+            language_model2 = get_language_model(os.path.join(load_dir, lm2_name))
         else:
-            language_model2 = LanguageModel.load(load_dir)
+            language_model2 = get_language_model(load_dir)
         if lm3_name:
-            language_model3 = LanguageModel.load(os.path.join(load_dir, lm3_name))
+            language_model3 = get_language_model(os.path.join(load_dir, lm3_name))
         else:
-            language_model3 = LanguageModel.load(load_dir)
+            language_model3 = get_language_model(load_dir)
 
         # Prediction heads
         ph_config_files = cls._get_prediction_head_files(load_dir)
@@ -199,11 +202,11 @@ class TriAdaptiveModel(nn.Module):
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
             # check if PredictionHead connected to Processor
-            assert hasattr(head, "label_tensor_name"), \
-                (
-                    f"Label_tensor_names are missing inside the {head.task_name} Prediction Head. Did you connect the model"
-                    " with the processor through either 'model.connect_heads_with_processor(processor.tasks)'"
-                    " or by passing the processor to the Adaptive Model?")
+            assert hasattr(head, "label_tensor_name"), (
+                f"Label_tensor_names are missing inside the {head.task_name} Prediction Head. Did you connect the model"
+                " with the processor through either 'model.connect_heads_with_processor(processor.tasks)'"
+                " or by passing the processor to the Adaptive Model?"
+            )
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
@@ -215,7 +218,7 @@ class TriAdaptiveModel(nn.Module):
         :param global_step: number of current training step.
         :param kwargs: Placeholder for passing generic parameters.
                        Note: Contains the batch (as dict of tensors), when called from Trainer.train().
-        :return loss: torch.Tensor that is the per sample loss (len: batch_size)
+        :return: loss: torch.Tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
         # This aggregates the loss per sample across multiple prediction heads
@@ -251,9 +254,7 @@ class TriAdaptiveModel(nn.Module):
         # Run forward pass of (multiple) prediction heads using the output from above
         all_logits = []
         if len(self.prediction_heads) > 0:
-            for head, lm1_out, lm2_out in zip(self.prediction_heads,
-                                              self.lm1_output_types,
-                                              self.lm2_output_types):
+            for head, lm1_out, lm2_out in zip(self.prediction_heads, self.lm1_output_types, self.lm2_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
                 if pooled_output[0] is not None:
                     if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
@@ -293,19 +294,30 @@ class TriAdaptiveModel(nn.Module):
         pooled_output = [None, None]
         # Forward pass for the queries
         if "query_input_ids" in kwargs.keys():
-            pooled_output1, hidden_states1 = self.language_model1(**kwargs)
+            pooled_output1, _ = self.language_model1(
+                input_ids=kwargs.get("query_input_ids"),
+                segment_ids=kwargs.get("query_segment_ids"),
+                attention_mask=kwargs.get("query_attention_mask"),
+                output_hidden_states=False,
+                output_attentions=False,
+            )
             pooled_output[0] = pooled_output1
+
         # Forward pass for text passages and tables
         if "passage_input_ids" in kwargs.keys():
             table_mask = torch.flatten(kwargs["is_table"]) == True
+
             # Current batch consists of only tables
             if all(table_mask):
-                pooled_output2, hidden_states2 = self.language_model3(
+                pooled_output2, _ = self.language_model3(
                     passage_input_ids=kwargs["passage_input_ids"],
                     passage_segment_ids=kwargs["table_segment_ids"],
-                    passage_attention_mask=kwargs["passage_attention_mask"]
+                    passage_attention_mask=kwargs["passage_attention_mask"],
+                    output_hidden_states=False,
+                    output_attentions=False,
                 )
                 pooled_output[1] = pooled_output2
+
             # Current batch consists of tables and texts
             elif any(table_mask):
 
@@ -319,17 +331,31 @@ class TriAdaptiveModel(nn.Module):
                 table_input_ids = passage_input_ids[table_mask]
                 table_segment_ids = table_segment_ids[table_mask]
                 table_attention_mask = passage_attention_mask[table_mask]
-                pooled_output_tables, _ = self.language_model3(table_input_ids, table_segment_ids, table_attention_mask)
+
+                pooled_output_tables, _ = self.language_model3(
+                    input_ids=table_input_ids,
+                    segment_ids=table_segment_ids,
+                    attention_mask=table_attention_mask,
+                    output_hidden_states=False,
+                    output_attentions=False,
+                )
 
                 text_input_ids = passage_input_ids[~table_mask]
                 text_segment_ids = passage_segment_ids[~table_mask]
                 text_attention_mask = passage_attention_mask[~table_mask]
-                pooled_output_text, _ = self.language_model2(text_input_ids, text_segment_ids, text_attention_mask)
+
+                pooled_output_text, _ = self.language_model2(
+                    input_ids=text_input_ids,
+                    segment_ids=text_segment_ids,
+                    attention_mask=text_attention_mask,
+                    output_hidden_states=False,
+                    output_attentions=False,
+                )
 
                 last_table_idx = 0
                 last_text_idx = 0
                 combined_outputs = []
-                for idx, mask in enumerate(table_mask):
+                for mask in table_mask:
                     if mask:
                         combined_outputs.append(pooled_output_tables[last_table_idx])
                         last_table_idx += 1
@@ -339,13 +365,27 @@ class TriAdaptiveModel(nn.Module):
                 combined_outputs = torch.stack(combined_outputs)
 
                 embedding_size = pooled_output_tables.shape[-1]
-                assert pooled_output_tables.shape[-1] == pooled_output_text.shape[
-                    -1], "Passage embedding model and table embedding model use different embedding sizes"
+                assert (
+                    pooled_output_tables.shape[-1] == pooled_output_text.shape[-1]
+                ), "Passage embedding model and table embedding model use different embedding sizes"
                 pooled_output_combined = combined_outputs.view(-1, embedding_size)
                 pooled_output[1] = pooled_output_combined
+
             # Current batch consists of only texts
             else:
-                pooled_output2, hidden_states2 = self.language_model2(**kwargs)
+                # Make input two-dimensional
+                max_seq_len = kwargs["passage_input_ids"].shape[-1]
+                input_ids = kwargs["passage_input_ids"].view(-1, max_seq_len)
+                attention_mask = kwargs["passage_attention_mask"].view(-1, max_seq_len)
+                segment_ids = kwargs["passage_segment_ids"].view(-1, max_seq_len)
+
+                pooled_output2, _ = self.language_model2(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    segment_ids=segment_ids,
+                    output_hidden_states=False,
+                    output_attentions=False,
+                )
                 pooled_output[1] = pooled_output2
 
         return tuple(pooled_output)
@@ -364,37 +404,42 @@ class TriAdaptiveModel(nn.Module):
             "lm3_type": self.language_model3.__class__.__name__,
             "lm3_name": self.language_model3.name,
             "lm3_output_types": ",".join(self.lm3_output_types),
-            "prediction_heads": ",".join(
-                [head.__class__.__name__ for head in self.prediction_heads])
+            "prediction_heads": ",".join([head.__class__.__name__ for head in self.prediction_heads]),
         }
         try:
-            MlLogger.log_params(params)
+            tracker.track_params(params)
         except Exception as e:
             logger.warning(f"ML logging didn't work: {e}")
 
     def verify_vocab_size(self, vocab_size1: int, vocab_size2: int, vocab_size3: int):
-        """ Verifies that the model fits to the tokenizer vocabulary.
+        """Verifies that the model fits to the tokenizer vocabulary.
         They could diverge in case of custom vocabulary added via tokenizer.add_tokens()"""
 
         model1_vocab_len = self.language_model1.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = f"Vocab size of tokenizer {vocab_size1} doesn't match with model {model1_vocab_len}. " \
-              "If you added a custom vocabulary to the tokenizer, " \
-              "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
+        msg = (
+            f"Vocab size of tokenizer {vocab_size1} doesn't match with model {model1_vocab_len}. "
+            "If you added a custom vocabulary to the tokenizer, "
+            "make sure to supply 'n_added_tokens' to get_language_model() and BertStyleLM.load()"
+        )
         assert vocab_size1 == model1_vocab_len, msg
 
         model2_vocab_len = self.language_model2.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = f"Vocab size of tokenizer {vocab_size1} doesn't match with model {model2_vocab_len}. " \
-              "If you added a custom vocabulary to the tokenizer, " \
-              "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
+        msg = (
+            f"Vocab size of tokenizer {vocab_size1} doesn't match with model {model2_vocab_len}. "
+            "If you added a custom vocabulary to the tokenizer, "
+            "make sure to supply 'n_added_tokens' to get_language_model() and BertStyleLM.load()"
+        )
         assert vocab_size2 == model2_vocab_len, msg
 
         model3_vocab_len = self.language_model3.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = f"Vocab size of tokenizer {vocab_size3} doesn't match with model {model3_vocab_len}. " \
-              "If you added a custom vocabulary to the tokenizer, " \
-              "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
+        msg = (
+            f"Vocab size of tokenizer {vocab_size3} doesn't match with model {model3_vocab_len}. "
+            "If you added a custom vocabulary to the tokenizer, "
+            "make sure to supply 'n_added_tokens' to get_language_model() and BertStyleLM.load()"
+        )
 
         assert vocab_size3 == model1_vocab_len, msg
 
@@ -414,7 +459,7 @@ class TriAdaptiveModel(nn.Module):
             head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
             label_list = tasks[head.task_name]["label_list"]
             if not label_list and require_labels:
-                raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
+                raise Exception(f"The task '{head.task_name}' is missing a valid set of labels")
             label_list = tasks[head.task_name]["label_list"]
             head.label_list = label_list
             num_labels = len(label_list)

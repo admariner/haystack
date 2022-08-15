@@ -8,7 +8,8 @@ from tqdm import tqdm
 
 from haystack.modeling.evaluation.metrics import compute_metrics, compute_report_metrics
 from haystack.modeling.model.adaptive_model import AdaptiveModel
-from haystack.modeling.logger import MLFlowLogger as MlLogger
+from haystack.modeling.model.biadaptive_model import BiAdaptiveModel
+from haystack.utils.experiment_tracking import Tracker as tracker
 from haystack.modeling.visual import BUSH_SEP
 
 
@@ -19,13 +20,12 @@ class Evaluator:
     """
     Handles evaluation of a given model over a specified dataset.
     """
-    def __init__(
-        self, data_loader: torch.utils.data.DataLoader, tasks, device: str, report: bool = True
-    ):
+
+    def __init__(self, data_loader: torch.utils.data.DataLoader, tasks, device: torch.device, report: bool = True):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
-        :param tesks: 
-        :param device: The device on which the tensors should be processed. Choose from "cpu" and "cuda".
+        :param tesks:
+        :param device: The device on which the tensors should be processed. Choose from torch.device("cpu") and torch.device("cuda").
         :param report: Whether an eval report should be generated (e.g. classification report per class).
         """
         self.data_loader = data_loader
@@ -33,34 +33,65 @@ class Evaluator:
         self.device = device
         self.report = report
 
-    def eval(self, model: AdaptiveModel, return_preds_and_labels: bool = False, calibrate_conf_scores: bool = False) -> List[Dict]:
+    def eval(
+        self,
+        model: AdaptiveModel,
+        return_preds_and_labels: bool = False,
+        calibrate_conf_scores: bool = False,
+        use_confidence_scores_for_ranking: bool = True,
+        use_no_answer_legacy_confidence: bool = False,
+    ) -> List[Dict]:
         """
         Performs evaluation on a given model.
 
         :param model: The model on which to perform evaluation
         :param return_preds_and_labels: Whether to add preds and labels in the returned dicts of the
-        :param calibrate_conf_scores: Whether to calibrate the temperature for temperature scaling of the confidence scores
-        :return all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
+        :param calibrate_conf_scores: Whether to calibrate the temperature for scaling of the confidence scores.
+        :param use_confidence_scores_for_ranking: Whether to sort answers by confidence score (normalized between 0 and 1)(default) or by standard score (unbounded).
+        :param use_no_answer_legacy_confidence: Whether to use the legacy confidence definition for no_answer: difference
+                                                between the best overall answer confidence and the no_answer gap confidence.
+                                                Otherwise, we use the no_answer score normalized to a range of [0,1] by
+                                                an expit function (default).
+        :return: all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
                              and reports generated during evaluation.
         """
+        model.prediction_heads[0].use_confidence_scores_for_ranking = use_confidence_scores_for_ranking
+        model.prediction_heads[0].use_no_answer_legacy_confidence = use_no_answer_legacy_confidence
         model.eval()
 
         # init empty lists per prediction head
-        loss_all = [0 for _ in model.prediction_heads]  # type: List
-        preds_all = [[] for _ in model.prediction_heads]  # type: List
-        label_all = [[] for _ in model.prediction_heads]  # type: List
-        ids_all = [[] for _ in model.prediction_heads]  # type: List
-        passage_start_t_all = [[] for _ in model.prediction_heads]  # type: List
-        logits_all = [[] for _ in model.prediction_heads]  # type: List
+        loss_all: List = [0 for _ in model.prediction_heads]
+        preds_all: List = [[] for _ in model.prediction_heads]
+        label_all: List = [[] for _ in model.prediction_heads]
+        ids_all: List = [[] for _ in model.prediction_heads]
+        passage_start_t_all: List = [[] for _ in model.prediction_heads]
+        logits_all: List = [[] for _ in model.prediction_heads]
 
-        for step, batch in enumerate(
-            tqdm(self.data_loader, desc="Evaluating", mininterval=10)
-        ):
+        for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating", mininterval=10)):
             batch = {key: batch[key].to(self.device) for key in batch}
 
             with torch.no_grad():
 
-                logits = model.forward(**batch)
+                if isinstance(model, AdaptiveModel):
+                    logits = model.forward(
+                        input_ids=batch.get("input_ids", None),
+                        segment_ids=batch.get("segment_ids", None),
+                        padding_mask=batch.get("padding_mask", None),
+                        output_hidden_states=batch.get("output_hidden_states", False),
+                        output_attentions=batch.get("output_attentions", False),
+                    )
+                elif isinstance(model, BiAdaptiveModel):
+                    logits = model.forward(
+                        query_input_ids=batch.get("query_input_ids", None),
+                        query_segment_ids=batch.get("query_segment_ids", None),
+                        query_attention_mask=batch.get("query_attention_mask", None),
+                        passage_input_ids=batch.get("passage_input_ids", None),
+                        passage_segment_ids=batch.get("passage_segment_ids", None),
+                        passage_attention_mask=batch.get("passage_attention_mask", None),
+                    )
+                else:
+                    logits = model.forward(**batch)
+
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
                 preds = model.logits_to_preds(logits=logits, **batch)
                 labels = model.prepare_labels(**batch)
@@ -76,7 +107,6 @@ class Evaluator:
                     if calibrate_conf_scores:
                         logits_all[head_num] += list(_to_numpy(logits))
 
-
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
@@ -88,29 +118,31 @@ class Evaluator:
                 logger.info(f"temperature used for confidence scores after calibration: {temperature_current}")
                 temperature_change = (abs(temperature_current - temperature_previous) / temperature_previous) * 100.0
                 if temperature_change > 50:
-                    logger.warning(f"temperature used for calibration of confidence scores changed by more than {temperature_change} percent")
-            if hasattr(head, 'aggregate_preds'):
+                    logger.warning(
+                        f"temperature used for calibration of confidence scores changed by more than {temperature_change} percent"
+                    )
+            if hasattr(head, "aggregate_preds"):
                 # Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
                 ids_all_list = [list(x) for x in ids_all_str]
                 head_ids = ["-".join(x) for x in ids_all_list]
-                preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
-                                                                                labels=label_all[head_num],
-                                                                                passage_start_t=passage_start_t_all[head_num],
-                                                                                ids=head_ids)
-            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
-                      "task_name": head.task_name}
-            result.update(
-                compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
+                preds_all[head_num], label_all[head_num] = head.aggregate_preds(
+                    preds=preds_all[head_num],
+                    labels=label_all[head_num],
+                    passage_start_t=passage_start_t_all[head_num],
+                    ids=head_ids,
                 )
-            )
+            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset), "task_name": head.task_name}
+            result.update(compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]))
             # Select type of report depending on prediction head output type
             if self.report:
                 try:
                     result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
                 except:
-                    logger.error(f"Couldn't create eval report for head {head_num} with following preds and labels:"
-                                 f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}")
+                    logger.error(
+                        f"Couldn't create eval report for head {head_num} with following preds and labels:"
+                        f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}"
+                    )
                     result["report"] = "Error"
 
             if return_preds_and_labels:
@@ -122,13 +154,22 @@ class Evaluator:
         return all_results
 
     @staticmethod
-    def log_results(results: List[Any], dataset_name: str, steps: int, logging: bool = True, print: bool = True, num_fold: Optional[int] = None):
+    def log_results(
+        results: List[Any],
+        dataset_name: str,
+        steps: int,
+        logging: bool = True,
+        print: bool = True,
+        num_fold: Optional[int] = None,
+    ):
         # Print a header
         header = "\n\n"
         header += BUSH_SEP + "\n"
         header += "***************************************************\n"
         if num_fold:
-            header += f"***** EVALUATION | FOLD: {num_fold} | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+            header += (
+                f"***** EVALUATION | FOLD: {num_fold} | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+            )
         else:
             header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
         header += "***************************************************\n"
@@ -136,17 +177,14 @@ class Evaluator:
         logger.info(header)
 
         for head_num, head in enumerate(results):
-            logger.info("\n _________ {} _________".format(head['task_name']))
+            logger.info("\n _________ {} _________".format(head["task_name"]))
             for metric_name, metric_val in head.items():
-                # log with ML framework (e.g. Mlflow)
+                # log with experiment tracking framework (e.g. Mlflow)
                 if logging:
-                    if not metric_name in ["preds","labels"] and not metric_name.startswith("_"):
+                    if not metric_name in ["preds", "labels"] and not metric_name.startswith("_"):
                         if isinstance(metric_val, numbers.Number):
-                            MlLogger.log_metrics(
-                                metrics={
-                                    f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
-                                },
-                                step=steps,
+                            tracker.track_metrics(
+                                metrics={f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val}, step=steps
                             )
                 # print via standard python logger
                 if print:
